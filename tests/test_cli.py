@@ -16,14 +16,13 @@ class TestCLI:
             result = main()
         assert result == 0
         captured = capsys.readouterr()
-        assert "usage:" in captured.out
+        assert "Usage:" in captured.out
 
     def test_help_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Should show help with --help flag."""
         with patch("sys.argv", ["distrobox-boost", "--help"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
+            result = main()
+        assert result == 0
         captured = capsys.readouterr()
-        assert "usage:" in captured.out
+        assert "Usage:" in captured.out
         assert "assemble" in captured.out

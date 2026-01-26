@@ -1,15 +1,32 @@
 [project]
 name = "distrobox-boost"
 version = "0.1.0"
-description = "Add your description here"
+description = "Accelerate distrobox container creation by baking packages and hooks into optimized images"
 readme = "README.md"
+license = "BSD-3-Clause"
 authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }
+]
+keywords = ["distrobox", "container", "podman", "docker", "optimization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
 ]
 requires-python = ">=3.13"
 dependencies = [
     "platformdirs>=4.0.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/xz-dev/distrobox-boost"
 
 [project.scripts]
 distrobox-boost = "distrobox_boost:main"
@@ -20,3 +37,8 @@ dev = ["pytest>=8.0.0"]
 [build-system]
 requires = ["uv_build>=0.9.25,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (require container runtime)",
+]

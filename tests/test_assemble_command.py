@@ -343,75 +343,99 @@ class TestRunAssemble:
             assert result == 1
 
     def test_passes_create_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'create' command to distrobox assemble."""
+        """Should pass 'create' command to distrobox assemble via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
             run_assemble("test", ["create"])
 
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
-            assert cmd[:3] == ["distrobox", "assemble", "create"]
+            assert "create" in cmd
             assert "--file" in cmd
             assert str(config_file) in cmd
 
     def test_passes_rm_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'rm' command to distrobox assemble."""
+        """Should pass 'rm' command to distrobox assemble via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
             run_assemble("test", ["rm"])
 
             cmd = mock_run.call_args[0][0]
-            assert cmd[:3] == ["distrobox", "assemble", "rm"]
+            assert "rm" in cmd
             assert "--file" in cmd
 
     def test_passes_replace_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'replace' command to distrobox assemble."""
+        """Should pass 'replace' command to distrobox assemble via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
             run_assemble("test", ["replace"])
 
             cmd = mock_run.call_args[0][0]
-            assert cmd[:3] == ["distrobox", "assemble", "replace"]
+            assert "replace" in cmd
             assert "--file" in cmd
 
     def test_passes_extra_flags_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass extra flags like --dry-run to distrobox assemble."""
+        """Should pass extra flags like --dry-run to distrobox assemble via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
             run_assemble("test", ["create", "--dry-run"])
@@ -422,16 +446,22 @@ class TestRunAssemble:
             assert "--file" in cmd
 
     def test_returns_distrobox_exit_code(self, tmp_path: Path) -> None:
-        """Should return the exit code from distrobox assemble."""
+        """Should return the exit code from distrobox assemble via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 42
             result = run_assemble("test", ["create"])
@@ -439,20 +469,25 @@ class TestRunAssemble:
             assert result == 42
 
     def test_empty_passthrough_args(self, tmp_path: Path) -> None:
-        """Should work with empty passthrough args."""
+        """Should work with empty passthrough args via hijack."""
         config_file = tmp_path / "distrobox.ini"
         config_file.write_text("[test]\nimage=test:latest\n")
+
+        mock_hijack = MagicMock()
+        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
+        mock_hijack.__exit__ = MagicMock(return_value=False)
+        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
 
         with (
             patch(
                 "distrobox_boost.command.assemble.get_container_cache_dir",
                 return_value=tmp_path,
             ),
-            patch("subprocess.run") as mock_run,
+            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
+            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
             run_assemble("test", [])
 
             cmd = mock_run.call_args[0][0]
-            assert cmd[:2] == ["distrobox", "assemble"]
             assert "--file" in cmd

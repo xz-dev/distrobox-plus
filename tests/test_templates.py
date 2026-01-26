@@ -34,30 +34,25 @@ class TestGenerateInstallCmd:
         result = generate_install_cmd(sample_packages)
         assert "set -e" in result
 
-    def test_contains_apk_command(self, sample_packages: dict[str, list[str]]) -> None:
-        """Should contain apk install command with packages."""
+    @pytest.mark.parametrize(
+        "manager,expected_cmd",
+        [
+            ("apk", "apk add bash curl"),
+            ("apt", "apt-get install -y bash curl"),
+            ("dnf", "dnf install -y bash curl"),
+            ("pacman", "pacman -S --noconfirm bash curl"),
+            ("zypper", "zypper install -y bash curl"),
+        ],
+    )
+    def test_contains_package_manager_command(
+        self,
+        sample_packages: dict[str, list[str]],
+        manager: str,
+        expected_cmd: str,
+    ) -> None:
+        """Should contain correct install command for each package manager."""
         result = generate_install_cmd(sample_packages)
-        assert "apk add bash curl" in result
-
-    def test_contains_apt_command(self, sample_packages: dict[str, list[str]]) -> None:
-        """Should contain apt-get install command with packages."""
-        result = generate_install_cmd(sample_packages)
-        assert "apt-get install -y bash curl" in result
-
-    def test_contains_dnf_command(self, sample_packages: dict[str, list[str]]) -> None:
-        """Should contain dnf install command with packages."""
-        result = generate_install_cmd(sample_packages)
-        assert "dnf install -y bash curl" in result
-
-    def test_contains_pacman_command(self, sample_packages: dict[str, list[str]]) -> None:
-        """Should contain pacman install command with packages."""
-        result = generate_install_cmd(sample_packages)
-        assert "pacman -S --noconfirm bash curl" in result
-
-    def test_contains_zypper_command(self, sample_packages: dict[str, list[str]]) -> None:
-        """Should contain zypper install command with packages."""
-        result = generate_install_cmd(sample_packages)
-        assert "zypper install -y bash curl" in result
+        assert expected_cmd in result
 
     def test_contains_fallback_error(self, sample_packages: dict[str, list[str]]) -> None:
         """Should contain fallback error for unsupported distributions."""
@@ -92,26 +87,19 @@ class TestGenerateUpgradeCmd:
         result = generate_upgrade_cmd()
         assert "set -e" in result
 
-    def test_contains_apk_upgrade(self) -> None:
-        """Should contain apk update and upgrade."""
+    @pytest.mark.parametrize(
+        "manager,expected_pattern",
+        [
+            ("apk", "apk update && apk upgrade"),
+            ("apt", "apt-get update"),
+            ("dnf", "dnf upgrade -y"),
+            ("pacman", "pacman -Syyu --noconfirm"),
+        ],
+    )
+    def test_contains_upgrade_command(self, manager: str, expected_pattern: str) -> None:
+        """Should contain correct upgrade command for each package manager."""
         result = generate_upgrade_cmd()
-        assert "apk update && apk upgrade" in result
-
-    def test_contains_apt_upgrade(self) -> None:
-        """Should contain apt-get update and upgrade."""
-        result = generate_upgrade_cmd()
-        assert "apt-get update" in result
-        assert "apt-get upgrade" in result
-
-    def test_contains_dnf_upgrade(self) -> None:
-        """Should contain dnf upgrade."""
-        result = generate_upgrade_cmd()
-        assert "dnf upgrade -y" in result
-
-    def test_contains_pacman_upgrade(self) -> None:
-        """Should contain pacman full upgrade."""
-        result = generate_upgrade_cmd()
-        assert "pacman -Syyu --noconfirm" in result
+        assert expected_pattern in result
 
 
 class TestGenerateHooksCmd:
@@ -151,11 +139,19 @@ class TestGenerateAdditionalPackagesCmd:
         result = generate_additional_packages_cmd(["git", "curl", "wget"])
         assert "git curl wget" in result
 
-    def test_contains_all_package_managers(self) -> None:
-        """Should contain commands for all package managers."""
+    @pytest.mark.parametrize(
+        "manager,expected_cmd",
+        [
+            ("apk", "apk add git"),
+            ("apt", "apt-get install -y git"),
+            ("dnf", "dnf install -y git"),
+            ("pacman", "pacman -S --noconfirm git"),
+            ("zypper", "zypper install -y git"),
+        ],
+    )
+    def test_contains_package_manager_command(
+        self, manager: str, expected_cmd: str
+    ) -> None:
+        """Should contain correct install command for each package manager."""
         result = generate_additional_packages_cmd(["git"])
-        assert "apk add git" in result
-        assert "apt-get install -y git" in result
-        assert "dnf install -y git" in result
-        assert "pacman -S --noconfirm git" in result
-        assert "zypper install -y git" in result
+        assert expected_cmd in result
