@@ -7,7 +7,9 @@ authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "platformdirs>=4.0.0",
+]
 
 [project.scripts]
 distrobox-boost = "distrobox_boost:main"

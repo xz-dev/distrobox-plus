@@ -2,9 +2,9 @@
 
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
+from distrobox_boost.utils.config import get_container_cache_dir
 from distrobox_boost.utils.templates import generate_install_script, generate_upgrade_script
 from distrobox_boost.utils.utils import get_image_builder
 
@@ -206,33 +206,34 @@ def run(name: str, base: str) -> int:
     print(f"Using image builder: {builder}")
     print(f"Building image '{name}' from base '{base}'...")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+    # Use cache directory for build context (preserved for debugging on failure)
+    cache_dir = get_container_cache_dir(name)
 
-        # Generate and write upgrade script
-        upgrade_script = generate_upgrade_script()
-        upgrade_path = tmppath / "upgrade.sh"
-        upgrade_path.write_text(upgrade_script)
+    # Generate and write upgrade script
+    upgrade_script = generate_upgrade_script()
+    upgrade_path = cache_dir / "upgrade.sh"
+    upgrade_path.write_text(upgrade_script)
 
-        # Generate and write install script
-        install_script = generate_install_script(DISTROBOX_PACKAGES)
-        install_path = tmppath / "install.sh"
-        install_path.write_text(install_script)
+    # Generate and write install script
+    install_script = generate_install_script(DISTROBOX_PACKAGES)
+    install_path = cache_dir / "install.sh"
+    install_path.write_text(install_script)
 
-        # Generate and write Containerfile
-        containerfile = generate_containerfile(base)
-        containerfile_path = tmppath / "Containerfile"
-        containerfile_path.write_text(containerfile)
+    # Generate and write Containerfile
+    containerfile = generate_containerfile(base)
+    containerfile_path = cache_dir / "Containerfile"
+    containerfile_path.write_text(containerfile)
 
-        # Build the image
-        returncode = build_image(builder, name, str(containerfile_path), str(tmppath))
+    # Build the image
+    returncode = build_image(builder, name, str(containerfile_path), str(cache_dir))
 
-        if returncode == 0:
-            print(f"Successfully built image: {name}")
-        else:
-            print(f"Failed to build image: {name}")
+    if returncode == 0:
+        print(f"Successfully built image: {name}")
+    else:
+        print(f"Failed to build image: {name}")
+        print(f"Build files preserved at: {cache_dir}")
 
-        return returncode
+    return returncode
 
 
 if __name__ == "__main__":
