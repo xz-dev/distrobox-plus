@@ -1,18 +1,87 @@
 """Tests for command/assemble.py."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from distrobox_boost.command.assemble import (
+    DISTROBOX_PACKAGES,
     ContainerConfig,
     _parse_multiline_value,
+    build_image,
     generate_assemble_content,
     generate_containerfile,
     parse_assemble_file,
     run_assemble,
 )
+
+
+class TestDistroboxPackages:
+    """Tests for DISTROBOX_PACKAGES constant."""
+
+    def test_has_all_package_managers(self) -> None:
+        """Should have entries for all supported package managers."""
+        expected_managers = {"apk", "apt", "dnf", "pacman", "zypper"}
+        assert set(DISTROBOX_PACKAGES.keys()) == expected_managers
+
+    def test_all_managers_have_bash(self) -> None:
+        """All package managers should include bash."""
+        for manager, packages in DISTROBOX_PACKAGES.items():
+            assert "bash" in packages, f"{manager} should include bash"
+
+    def test_all_managers_have_sudo(self) -> None:
+        """All package managers should include sudo."""
+        for manager, packages in DISTROBOX_PACKAGES.items():
+            assert "sudo" in packages, f"{manager} should include sudo"
+
+    def test_all_managers_have_curl(self) -> None:
+        """All package managers should include curl."""
+        for manager, packages in DISTROBOX_PACKAGES.items():
+            assert "curl" in packages, f"{manager} should include curl"
+
+    def test_packages_are_non_empty(self) -> None:
+        """All package lists should be non-empty."""
+        for manager, packages in DISTROBOX_PACKAGES.items():
+            assert len(packages) > 0, f"{manager} should have packages"
+
+
+class TestBuildImage:
+    """Tests for build_image function."""
+
+    @patch("distrobox_boost.command.assemble.subprocess.run")
+    def test_buildah_uses_bud_command(self, mock_subprocess: MagicMock) -> None:
+        """Should use 'bud' subcommand for buildah."""
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        build_image("buildah", "test-image", "/tmp/Containerfile", "/tmp")
+        call_args = mock_subprocess.call_args[0][0]
+        assert call_args[0] == "buildah"
+        assert call_args[1] == "bud"
+
+    @patch("distrobox_boost.command.assemble.subprocess.run")
+    def test_podman_uses_build_command(self, mock_subprocess: MagicMock) -> None:
+        """Should use 'build' subcommand for podman."""
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        build_image("podman", "test-image", "/tmp/Containerfile", "/tmp")
+        call_args = mock_subprocess.call_args[0][0]
+        assert call_args[0] == "podman"
+        assert call_args[1] == "build"
+
+    @patch("distrobox_boost.command.assemble.subprocess.run")
+    def test_docker_uses_build_command(self, mock_subprocess: MagicMock) -> None:
+        """Should use 'build' subcommand for docker."""
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        build_image("docker", "test-image", "/tmp/Containerfile", "/tmp")
+        call_args = mock_subprocess.call_args[0][0]
+        assert call_args[0] == "docker"
+        assert call_args[1] == "build"
+
+    @patch("distrobox_boost.command.assemble.subprocess.run")
+    def test_returns_exit_code(self, mock_subprocess: MagicMock) -> None:
+        """Should return the subprocess exit code."""
+        mock_subprocess.return_value = MagicMock(returncode=42)
+        result = build_image("podman", "test-image", "/tmp/Containerfile", "/tmp")
+        assert result == 42
 
 
 class TestParseMultilineValue:
