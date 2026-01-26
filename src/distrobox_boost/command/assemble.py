@@ -8,10 +8,10 @@ from pathlib import Path
 
 from distrobox_boost.utils.config import get_container_cache_dir, get_container_config_file
 from distrobox_boost.utils.templates import (
-    generate_additional_packages_script,
-    generate_hooks_script,
-    generate_install_script,
-    generate_upgrade_script,
+    generate_additional_packages_cmd,
+    generate_hooks_cmd,
+    generate_install_cmd,
+    generate_upgrade_cmd,
 )
 from distrobox_boost.utils.utils import get_image_builder
 
@@ -154,25 +154,26 @@ DISTROBOX_PACKAGES: dict[str, list[str]] = {
 }
 
 
-def build_image(builder: str, name: str, containerfile_path: str, context_path: str) -> int:
+def build_image(builder: str, name: str, containerfile_content: str) -> int:
     """Build container image using the specified builder.
+
+    Reads Containerfile from stdin to avoid needing a build context directory.
 
     Args:
         builder: Image builder to use (buildah, podman, or docker).
         name: Name/tag for the resulting image.
-        containerfile_path: Path to the Containerfile.
-        context_path: Build context directory path.
+        containerfile_content: Content of the Containerfile.
 
     Returns:
         Exit code from the build command.
     """
     if builder == "buildah":
-        cmd = ["buildah", "bud", "-t", name, "-f", containerfile_path, context_path]
+        cmd = ["buildah", "bud", "-t", name, "-f", "-", "."]
     else:
-        cmd = [builder, "build", "-t", name, "-f", containerfile_path, context_path]
+        cmd = [builder, "build", "-t", name, "-f", "-", "."]
 
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, input=containerfile_content, text=True)
     return result.returncode
 
 
@@ -293,19 +294,23 @@ def generate_assemble_content(config: ContainerConfig, new_image: str) -> str:
 
 def generate_containerfile(
     base_image: str,
-    has_pre_hooks: bool,
-    has_packages: bool,
-    has_hooks: bool,
+    upgrade_cmd: str,
+    install_cmd: str,
+    pre_init_hooks_cmd: str,
+    additional_packages_cmd: str,
+    init_hooks_cmd: str,
 ) -> str:
-    """Generate Containerfile with conditional steps.
+    """Generate Containerfile with inline commands.
 
-    Only includes steps where the corresponding field has non-empty values.
+    Only includes steps where the corresponding command is non-empty.
 
     Args:
         base_image: Base image to build from.
-        has_pre_hooks: Whether pre_init_hooks has values.
-        has_packages: Whether additional_packages has values.
-        has_hooks: Whether init_hooks has values.
+        upgrade_cmd: Command to upgrade packages (always has value).
+        install_cmd: Command to install distrobox deps (always has value).
+        pre_init_hooks_cmd: Command for pre-init hooks (can be empty).
+        additional_packages_cmd: Command to install extra packages (can be empty).
+        init_hooks_cmd: Command for init hooks (can be empty).
 
     Returns:
         Containerfile content as string.
@@ -315,43 +320,38 @@ def generate_containerfile(
     # 1. Upgrade all packages first (always included)
     lines.extend([
         "# Upgrade all packages",
-        "COPY upgrade.sh /tmp/upgrade.sh",
-        "RUN chmod +x /tmp/upgrade.sh && /tmp/upgrade.sh && rm /tmp/upgrade.sh",
+        f"RUN {upgrade_cmd}",
         "",
     ])
 
     # 2. Pre-init hooks (only if has values)
-    if has_pre_hooks:
+    if pre_init_hooks_cmd:
         lines.extend([
             "# Pre-init hooks",
-            "COPY pre_init_hooks.sh /tmp/pre_init_hooks.sh",
-            "RUN chmod +x /tmp/pre_init_hooks.sh && /tmp/pre_init_hooks.sh && rm /tmp/pre_init_hooks.sh",
+            f"RUN {pre_init_hooks_cmd}",
             "",
         ])
 
     # 3. Install distrobox dependencies (always included)
     lines.extend([
         "# Install distrobox dependencies",
-        "COPY install.sh /tmp/install.sh",
-        "RUN chmod +x /tmp/install.sh && /tmp/install.sh && rm /tmp/install.sh",
+        f"RUN {install_cmd}",
         "",
     ])
 
     # 4. Install additional_packages (only if has values)
-    if has_packages:
+    if additional_packages_cmd:
         lines.extend([
             "# Install additional packages",
-            "COPY additional_packages.sh /tmp/additional_packages.sh",
-            "RUN chmod +x /tmp/additional_packages.sh && /tmp/additional_packages.sh && rm /tmp/additional_packages.sh",
+            f"RUN {additional_packages_cmd}",
             "",
         ])
 
     # 5. Init hooks (only if has values)
-    if has_hooks:
+    if init_hooks_cmd:
         lines.extend([
             "# Init hooks",
-            "COPY init_hooks.sh /tmp/init_hooks.sh",
-            "RUN chmod +x /tmp/init_hooks.sh && /tmp/init_hooks.sh && rm /tmp/init_hooks.sh",
+            f"RUN {init_hooks_cmd}",
             "",
         ])
 
@@ -423,50 +423,35 @@ def run_rebuild(name: str) -> int:
     print(f"Using image builder: {builder}")
     print(f"Rebuilding '{name}' from base '{config.image}'...")
 
-    # Prepare cache directory
-    cache_dir = get_container_cache_dir(name)
+    # Generate inline commands
+    upgrade_cmd = generate_upgrade_cmd()
+    install_cmd = generate_install_cmd(DISTROBOX_PACKAGES)
+    pre_init_hooks_cmd = generate_hooks_cmd(config.pre_init_hooks)
+    additional_packages_cmd = generate_additional_packages_cmd(config.additional_packages)
+    init_hooks_cmd = generate_hooks_cmd(config.init_hooks)
 
-    # Generate and write scripts
-    upgrade_path = cache_dir / "upgrade.sh"
-    upgrade_path.write_text(generate_upgrade_script())
-
-    install_path = cache_dir / "install.sh"
-    install_path.write_text(generate_install_script(DISTROBOX_PACKAGES))
-
-    # Conditional scripts
-    has_pre_hooks = bool(config.pre_init_hooks)
-    has_packages = bool(config.additional_packages)
-    has_hooks = bool(config.init_hooks)
-
-    if has_pre_hooks:
-        pre_hooks_path = cache_dir / "pre_init_hooks.sh"
-        pre_hooks_path.write_text(generate_hooks_script(config.pre_init_hooks))
-
-    if has_packages:
-        packages_path = cache_dir / "additional_packages.sh"
-        packages_path.write_text(generate_additional_packages_script(config.additional_packages))
-
-    if has_hooks:
-        hooks_path = cache_dir / "init_hooks.sh"
-        hooks_path.write_text(generate_hooks_script(config.init_hooks))
-
-    # Generate and write Containerfile
+    # Generate Containerfile with inline commands
     containerfile = generate_containerfile(
         config.image,
-        has_pre_hooks=has_pre_hooks,
-        has_packages=has_packages,
-        has_hooks=has_hooks,
+        upgrade_cmd=upgrade_cmd,
+        install_cmd=install_cmd,
+        pre_init_hooks_cmd=pre_init_hooks_cmd,
+        additional_packages_cmd=additional_packages_cmd,
+        init_hooks_cmd=init_hooks_cmd,
     )
+
+    # Prepare cache directory and save Containerfile for debugging
+    cache_dir = get_container_cache_dir(name)
     containerfile_path = cache_dir / "Containerfile"
     containerfile_path.write_text(containerfile)
 
-    # Build the image
+    # Build the image (reads Containerfile from stdin)
     image_tag = f"{name}:latest"
-    returncode = build_image(builder, image_tag, str(containerfile_path), str(cache_dir))
+    returncode = build_image(builder, image_tag, containerfile)
 
     if returncode != 0:
         print(f"Failed to build image: {image_tag}")
-        print(f"Build files preserved at: {cache_dir}")
+        print(f"Containerfile preserved at: {containerfile_path}")
         return returncode
 
     print(f"Successfully built image: {image_tag}")

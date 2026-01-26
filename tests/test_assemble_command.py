@@ -53,16 +53,18 @@ class TestBuildImage:
     def test_buildah_uses_bud_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'bud' subcommand for buildah."""
         mock_subprocess.return_value = MagicMock(returncode=0)
-        build_image("buildah", "test-image", "/tmp/Containerfile", "/tmp")
+        build_image("buildah", "test-image", "FROM alpine\n")
         call_args = mock_subprocess.call_args[0][0]
         assert call_args[0] == "buildah"
         assert call_args[1] == "bud"
+        assert "-f" in call_args
+        assert "-" in call_args  # Read from stdin
 
     @patch("distrobox_boost.command.assemble.subprocess.run")
     def test_podman_uses_build_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'build' subcommand for podman."""
         mock_subprocess.return_value = MagicMock(returncode=0)
-        build_image("podman", "test-image", "/tmp/Containerfile", "/tmp")
+        build_image("podman", "test-image", "FROM alpine\n")
         call_args = mock_subprocess.call_args[0][0]
         assert call_args[0] == "podman"
         assert call_args[1] == "build"
@@ -71,7 +73,7 @@ class TestBuildImage:
     def test_docker_uses_build_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'build' subcommand for docker."""
         mock_subprocess.return_value = MagicMock(returncode=0)
-        build_image("docker", "test-image", "/tmp/Containerfile", "/tmp")
+        build_image("docker", "test-image", "FROM alpine\n")
         call_args = mock_subprocess.call_args[0][0]
         assert call_args[0] == "docker"
         assert call_args[1] == "build"
@@ -80,8 +82,18 @@ class TestBuildImage:
     def test_returns_exit_code(self, mock_subprocess: MagicMock) -> None:
         """Should return the subprocess exit code."""
         mock_subprocess.return_value = MagicMock(returncode=42)
-        result = build_image("podman", "test-image", "/tmp/Containerfile", "/tmp")
+        result = build_image("podman", "test-image", "FROM alpine\n")
         assert result == 42
+
+    @patch("distrobox_boost.command.assemble.subprocess.run")
+    def test_passes_containerfile_to_stdin(self, mock_subprocess: MagicMock) -> None:
+        """Should pass containerfile content to stdin."""
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        content = "FROM alpine\nRUN echo hello\n"
+        build_image("podman", "test-image", content)
+        call_kwargs = mock_subprocess.call_args[1]
+        assert call_kwargs["input"] == content
+        assert call_kwargs["text"] is True
 
 
 class TestParseMultilineValue:
@@ -205,96 +217,115 @@ class TestGenerateContainerfile:
         """Should always include upgrade and install steps."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=False,
-            has_hooks=False,
+            upgrade_cmd="apk update && apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="",
+            init_hooks_cmd="",
         )
 
         assert "FROM alpine:latest" in result
-        assert "upgrade.sh" in result
-        assert "install.sh" in result
+        assert "RUN apk update && apk upgrade" in result
+        assert "RUN apk add bash" in result
 
     def test_includes_pre_hooks_when_present(self) -> None:
-        """Should include pre_init_hooks step when has_pre_hooks=True."""
+        """Should include pre_init_hooks step when command is non-empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=True,
-            has_packages=False,
-            has_hooks=False,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="echo pre-hook",
+            additional_packages_cmd="",
+            init_hooks_cmd="",
         )
 
-        assert "pre_init_hooks.sh" in result
+        assert "# Pre-init hooks" in result
+        assert "RUN echo pre-hook" in result
 
     def test_excludes_pre_hooks_when_absent(self) -> None:
-        """Should not include pre_init_hooks step when has_pre_hooks=False."""
+        """Should not include pre_init_hooks step when command is empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=False,
-            has_hooks=False,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="",
+            init_hooks_cmd="",
         )
 
-        assert "pre_init_hooks.sh" not in result
+        assert "Pre-init hooks" not in result
 
     def test_includes_packages_when_present(self) -> None:
-        """Should include additional_packages step when has_packages=True."""
+        """Should include additional_packages step when command is non-empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=True,
-            has_hooks=False,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="apk add git curl",
+            init_hooks_cmd="",
         )
 
-        assert "additional_packages.sh" in result
+        assert "# Install additional packages" in result
+        assert "RUN apk add git curl" in result
 
     def test_excludes_packages_when_absent(self) -> None:
-        """Should not include additional_packages step when has_packages=False."""
+        """Should not include additional_packages step when command is empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=False,
-            has_hooks=False,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="",
+            init_hooks_cmd="",
         )
 
-        assert "additional_packages.sh" not in result
+        assert "Install additional packages" not in result
 
     def test_includes_hooks_when_present(self) -> None:
-        """Should include init_hooks step when has_hooks=True."""
+        """Should include init_hooks step when command is non-empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=False,
-            has_hooks=True,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="",
+            init_hooks_cmd="echo init-hook",
         )
 
-        assert "init_hooks.sh" in result
+        assert "# Init hooks" in result
+        assert "RUN echo init-hook" in result
 
     def test_excludes_hooks_when_absent(self) -> None:
-        """Should not include init_hooks step when has_hooks=False."""
+        """Should not include init_hooks step when command is empty."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=False,
-            has_packages=False,
-            has_hooks=False,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="",
+            additional_packages_cmd="",
+            init_hooks_cmd="",
         )
 
-        assert "init_hooks.sh" not in result
+        assert "Init hooks" not in result
 
     def test_all_steps_in_correct_order(self) -> None:
         """Should include all steps in correct order when all are present."""
         result = generate_containerfile(
             "alpine:latest",
-            has_pre_hooks=True,
-            has_packages=True,
-            has_hooks=True,
+            upgrade_cmd="apk upgrade",
+            install_cmd="apk add bash",
+            pre_init_hooks_cmd="echo pre-hook",
+            additional_packages_cmd="apk add git",
+            init_hooks_cmd="echo init-hook",
         )
 
-        # Check order by finding COPY command positions (more specific)
-        upgrade_pos = result.find("COPY upgrade.sh")
-        pre_hooks_pos = result.find("COPY pre_init_hooks.sh")
-        install_pos = result.find("COPY install.sh")
-        packages_pos = result.find("COPY additional_packages.sh")
-        hooks_pos = result.find("COPY init_hooks.sh")
+        # Check order by finding comment positions
+        upgrade_pos = result.find("# Upgrade all packages")
+        pre_hooks_pos = result.find("# Pre-init hooks")
+        install_pos = result.find("# Install distrobox dependencies")
+        packages_pos = result.find("# Install additional packages")
+        hooks_pos = result.find("# Init hooks")
 
         assert upgrade_pos < pre_hooks_pos < install_pos < packages_pos < hooks_pos
 
