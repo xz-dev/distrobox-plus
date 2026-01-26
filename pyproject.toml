@@ -41,4 +41,6 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 markers = [
     "integration: marks tests as integration tests (require container runtime)",
+    "slow: marks tests as slow (e.g., non-alpine image builds)",
 ]
+addopts = "-m 'not slow'"

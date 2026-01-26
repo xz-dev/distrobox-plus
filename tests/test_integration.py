@@ -80,10 +80,10 @@ class TestImageBuild:
         "base_image,pkg_manager",
         [
             ("alpine:latest", "apk"),
-            ("debian:bookworm-slim", "apt"),
-            ("fedora:latest", "dnf"),
-            ("archlinux:latest", "pacman"),
-            ("opensuse/tumbleweed:latest", "zypper"),
+            pytest.param("debian:bookworm-slim", "apt", marks=pytest.mark.slow),
+            pytest.param("fedora:latest", "dnf", marks=pytest.mark.slow),
+            pytest.param("archlinux:latest", "pacman", marks=pytest.mark.slow),
+            pytest.param("opensuse/tumbleweed:latest", "zypper", marks=pytest.mark.slow),
         ],
     )
     def test_build_image_with_distro(
@@ -259,8 +259,8 @@ class TestPackageManagerDetection:
         "base_image,expected_manager",
         [
             ("alpine:latest", "apk"),
-            ("debian:bookworm-slim", "apt-get"),
-            ("fedora:latest", "dnf"),
+            pytest.param("debian:bookworm-slim", "apt-get", marks=pytest.mark.slow),
+            pytest.param("fedora:latest", "dnf", marks=pytest.mark.slow),
         ],
     )
     def test_package_manager_detection(

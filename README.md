@@ -211,14 +211,14 @@ git clone https://github.com/xz-dev/distrobox-boost
 cd distrobox-boost
 pip install -e ".[dev]"
 
-# Run unit tests
-uv run pytest -v --ignore=tests/test_integration.py
-
-# Run integration tests (requires container runtime)
-uv run pytest -v tests/test_integration.py -m integration
-
-# Run all tests
+# Run tests (default: unit tests + alpine integration)
 uv run pytest -v
+
+# Run all tests including slow distro builds (debian, fedora, arch, opensuse)
+uv run pytest -v -m ""
+
+# Run only unit tests (no integration)
+uv run pytest -v --ignore=tests/test_integration.py
 ```
 
 ### Test Coverage
