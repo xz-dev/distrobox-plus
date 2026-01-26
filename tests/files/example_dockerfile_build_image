@@ -1,5 +1,0 @@
-FROM ubuntu:latest
-
-RUN touch /build_image_dockerfile_test
-
-RUN apt-get update && apt-get install -y fish && rm -rf /var/lib/apt/lists/*
