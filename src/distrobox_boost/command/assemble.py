@@ -1,7 +1,6 @@
 """Assemble commands: import, rebuild, and assemble distrobox containers."""
 
 import configparser
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -273,6 +272,77 @@ def parse_assemble_file(file_path: Path, container_name: str) -> ContainerConfig
     return result
 
 
+def write_config_without_header(path: Path, config: ContainerConfig) -> None:
+    """Write config file without section header.
+
+    The container name is determined by the directory structure, not the file content.
+
+    Args:
+        path: Path to write the config file.
+        config: Container configuration to write.
+    """
+    lines = []
+    if config.image:
+        lines.append(f"image={config.image}")
+    if config.additional_packages:
+        lines.append(f"additional_packages={' '.join(config.additional_packages)}")
+    if config.pre_init_hooks:
+        # Wrap each hook in quotes
+        hooks = " ".join(f'"{h}"' for h in config.pre_init_hooks)
+        lines.append(f"pre_init_hooks={hooks}")
+    if config.init_hooks:
+        hooks = " ".join(f'"{h}"' for h in config.init_hooks)
+        lines.append(f"init_hooks={hooks}")
+    for key, values in config.remaining_options.items():
+        for value in values:
+            lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def parse_config_without_header(file_path: Path, container_name: str) -> ContainerConfig:
+    """Parse config file without section header.
+
+    The container name is provided as an argument (from directory structure),
+    not read from the file content.
+
+    Args:
+        file_path: Path to the config file.
+        container_name: Name of the container (from directory structure).
+
+    Returns:
+        Parsed container configuration.
+
+    Raises:
+        ValueError: If file not found or can't be parsed.
+    """
+    if not file_path.exists():
+        raise ValueError(f"Config file not found: {file_path}")
+
+    # Read file and temporarily add section header for configparser
+    content = file_path.read_text()
+    temp_content = f"[{container_name}]\n{content}"
+
+    config = configparser.ConfigParser()
+    config.optionxform = str  # type: ignore[assignment]
+    config.read_string(temp_content)
+
+    section = config[container_name]
+
+    # Parse fields (reuse existing logic)
+    result = ContainerConfig(name=container_name)
+    result.image = section.get("image", "").strip()
+    result.additional_packages = _parse_multiline_value(section.get("additional_packages", ""))
+    result.pre_init_hooks = _parse_multiline_value(section.get("pre_init_hooks", ""))
+    result.init_hooks = _parse_multiline_value(section.get("init_hooks", ""))
+
+    # Collect remaining options (not baked into image)
+    for key, value in section.items():
+        if key not in BAKED_FIELDS:
+            result.remaining_options[key] = [value] if value else []
+
+    return result
+
+
 def generate_assemble_content(config: ContainerConfig, new_image: str) -> str:
     """Generate optimized INI content (no baked fields, local image).
 
@@ -362,6 +432,10 @@ def generate_containerfile(
 def run_import(file: str, name: str) -> int:
     """Import original assemble file into config directory.
 
+    Parses the original file (which has a section header) and saves
+    only the key=value pairs without the section header. The container
+    name is determined by the directory structure.
+
     Args:
         file: Path to original assemble file.
         name: Container name (section name in the INI file).
@@ -374,16 +448,16 @@ def run_import(file: str, name: str) -> int:
         print(f"Error: File not found: {file}")
         return 1
 
-    # Validate that the container section exists
+    # Parse original file and extract the specified section
     try:
-        parse_assemble_file(source_path, name)
+        config = parse_assemble_file(source_path, name)
     except ValueError as e:
         print(f"Error: {e}")
         return 1
 
-    # Copy to config directory
+    # Write config without section header
     dest_path = get_container_config_file(name)
-    shutil.copy(source_path, dest_path)
+    write_config_without_header(dest_path, config)
 
     print(f"Imported config for '{name}' to: {dest_path}")
     return 0
@@ -406,7 +480,8 @@ def run_rebuild(name: str) -> int:
         return 1
 
     try:
-        config = parse_assemble_file(config_path, name)
+        # Use parse_config_without_header since stored configs don't have section headers
+        config = parse_config_without_header(config_path, name)
     except ValueError as e:
         print(f"Error: {e}")
         return 1
