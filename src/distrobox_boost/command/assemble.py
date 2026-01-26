@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from distrobox_boost.utils.config import get_container_cache_dir, get_container_config_file
+from distrobox_boost.utils.hijack import HijackManager
 from distrobox_boost.utils.templates import (
     generate_additional_packages_cmd,
     generate_hooks_cmd,
@@ -466,9 +467,10 @@ def run_rebuild(name: str) -> int:
 
 
 def run_assemble(name: str, passthrough_args: list[str]) -> int:
-    """Run distrobox assemble with optimized config.
+    """Run distrobox assemble with optimized config using PATH hijacking.
 
-    Passes through all arguments to distrobox assemble, only adding --file.
+    Uses HijackManager to intercept distrobox-create calls, allowing us to
+    apply boost optimizations (image replacement, removing baked-in args).
 
     Args:
         name: Container name (used to find the optimized config).
@@ -482,13 +484,13 @@ def run_assemble(name: str, passthrough_args: list[str]) -> int:
     config_path = cache_dir / "distrobox.ini"
 
     if not config_path.exists():
-        print(f"Error: No optimized config found for '{name}'. Run 'distrobox-boost rebuild' first.")
+        print(f"Error: No optimized config found for '{name}'. Run 'distrobox-boost assemble rebuild' first.")
         print(f"Expected: {config_path}")
         return 1
 
-    # Build command: distrobox assemble <passthrough_args> --file <config_path>
-    cmd = ["distrobox", "assemble", *passthrough_args, "--file", str(config_path)]
-    print(f"Running: {' '.join(cmd)}")
-
-    result = subprocess.run(cmd)
-    return result.returncode
+    # Use HijackManager to intercept distrobox-create calls
+    with HijackManager() as hijack:
+        cmd = [str(hijack.assemble_path), *passthrough_args, "--file", str(config_path)]
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd)
+        return result.returncode
