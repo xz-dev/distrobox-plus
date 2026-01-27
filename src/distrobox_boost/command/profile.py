@@ -1,76 +1,47 @@
 """Profile command: manage container configuration profiles.
 
 The profile command supports:
-- import: Import original assemble config into distrobox-boost
+- import: Import original assemble config into distrobox-boost (splits multi-container files)
 - list: List all configured container profiles
 - rm: Remove a container profile
 """
 
+import configparser
 import shutil
 from pathlib import Path
 
-from distrobox_boost.utils.config import get_config_dir, get_container_config_dir, get_container_config_file
-from distrobox_boost.utils.parsing import ContainerConfig, parse_config_with_header
-
-
-def write_config_without_header(path: Path, config: ContainerConfig) -> None:
-    """Write config file without section header.
-
-    The container name is determined by the directory structure, not the file content.
-
-    Args:
-        path: Path to write the config file.
-        config: Container configuration to write.
-    """
-    lines = []
-    if config.image:
-        lines.append(f"image={config.image}")
-    if config.additional_packages:
-        lines.append(f"additional_packages={' '.join(config.additional_packages)}")
-    if config.pre_init_hooks:
-        # Wrap each hook in quotes, escape any internal quotes
-        hooks = " ".join(
-            f'"{h.replace(chr(92), chr(92)+chr(92)).replace(chr(34), chr(92)+chr(34))}"'
-            for h in config.pre_init_hooks
-        )
-        lines.append(f"pre_init_hooks={hooks}")
-    if config.init_hooks:
-        hooks = " ".join(
-            f'"{h.replace(chr(92), chr(92)+chr(92)).replace(chr(34), chr(92)+chr(34))}"'
-            for h in config.init_hooks
-        )
-        lines.append(f"init_hooks={hooks}")
-    for key, values in config.remaining_options.items():
-        for value in values:
-            lines.append(f"{key}={value}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+from distrobox_boost.utils.config import (
+    get_config_dir,
+    get_container_config_dir,
+    get_container_config_file,
+)
 
 
 def handle_import(args: list[str]) -> int:
     """Handle 'profile import' command.
 
+    Imports a distrobox assemble config file. If the file contains multiple
+    container sections, each is split into its own directory using the
+    section header (container name) as the directory name.
+
     Args:
-        args: Arguments after 'import'.
+        args: Arguments after 'import'. Expects --file <path>.
 
     Returns:
         Exit code.
     """
     file_path = None
-    name = None
 
     i = 0
     while i < len(args):
         if args[i] == "--file" and i + 1 < len(args):
             file_path = args[i + 1]
             i += 2
-        elif args[i] == "--name" and i + 1 < len(args):
-            name = args[i + 1]
-            i += 2
         else:
             i += 1
 
-    if not file_path or not name:
-        print("Usage: distrobox-boost profile import --file <file> --name <name>")
+    if not file_path:
+        print("Usage: distrobox-boost profile import --file <file>")
         return 1
 
     source_path = Path(file_path)
@@ -78,19 +49,29 @@ def handle_import(args: list[str]) -> int:
         print(f"Error: File not found: {file_path}")
         return 1
 
-    # Parse original file and extract the specified section
-    try:
-        config = parse_config_with_header(source_path, name)
-    except ValueError as e:
-        print(f"Error: {e}")
+    # Parse the config file to get all container sections
+    config = configparser.ConfigParser()
+    config.optionxform = str  # type: ignore[assignment]
+    config.read(source_path, encoding="utf-8")
+
+    sections = config.sections()
+    if not sections:
+        print(f"Error: No container sections found in {file_path}")
         return 1
 
-    # Write config without section header
-    dest_path = get_container_config_file(name)
-    write_config_without_header(dest_path, config)
+    # Import each container section into its own directory
+    for container_name in sections:
+        dest_path = get_container_config_file(container_name)
 
-    print(f"Imported config for '{name}' to: {dest_path}")
-    print("The optimized image will be built automatically on first create.")
+        # Write section content without header (directory name is the container name)
+        lines = []
+        for key, value in config[container_name].items():
+            lines.append(f"{key}={value}")
+
+        dest_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"Imported '{container_name}' to: {dest_path}")
+
+    print(f"\nImported {len(sections)} container(s). Optimized images will be built on first create.")
     return 0
 
 

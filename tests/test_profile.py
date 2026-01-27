@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from distrobox_boost.command.profile import write_config_without_header
 from distrobox_boost.utils.builder import (
     DISTROBOX_PACKAGES,
     build_image,
@@ -182,65 +181,6 @@ nvidia=true
         assert "image" not in result.remaining_options
 
 
-class TestWriteConfigWithoutHeader:
-    """Tests for write_config_without_header function."""
-
-    def test_writes_basic_config(self, tmp_path: Path) -> None:
-        """Should write config without section header."""
-        config = ContainerConfig(
-            name="test",
-            image="alpine:latest",
-        )
-        output_file = tmp_path / "config.ini"
-        write_config_without_header(output_file, config)
-
-        content = output_file.read_text()
-        assert "[test]" not in content
-        assert "image=alpine:latest" in content
-
-    def test_writes_packages(self, tmp_path: Path) -> None:
-        """Should write additional_packages as space-separated."""
-        config = ContainerConfig(
-            name="test",
-            image="alpine:latest",
-            additional_packages=["git", "curl", "wget"],
-        )
-        output_file = tmp_path / "config.ini"
-        write_config_without_header(output_file, config)
-
-        content = output_file.read_text()
-        assert "additional_packages=git curl wget" in content
-
-    def test_writes_hooks_with_quotes(self, tmp_path: Path) -> None:
-        """Should write hooks with quotes around each command."""
-        config = ContainerConfig(
-            name="test",
-            image="alpine:latest",
-            pre_init_hooks=["echo pre1", "echo pre2"],
-            init_hooks=["echo init"],
-        )
-        output_file = tmp_path / "config.ini"
-        write_config_without_header(output_file, config)
-
-        content = output_file.read_text()
-        assert 'pre_init_hooks="echo pre1" "echo pre2"' in content
-        assert 'init_hooks="echo init"' in content
-
-    def test_writes_remaining_options(self, tmp_path: Path) -> None:
-        """Should write remaining options."""
-        config = ContainerConfig(
-            name="test",
-            image="alpine:latest",
-            remaining_options={"volume": ["/home:/home"], "nvidia": ["true"]},
-        )
-        output_file = tmp_path / "config.ini"
-        write_config_without_header(output_file, config)
-
-        content = output_file.read_text()
-        assert "volume=/home:/home" in content
-        assert "nvidia=true" in content
-
-
 class TestParseConfigWithoutHeader:
     """Tests for parse_config_without_header function."""
 
@@ -285,28 +225,6 @@ nvidia=true
         assert "volume" in result.remaining_options
         assert "nvidia" in result.remaining_options
         assert "image" not in result.remaining_options
-
-    def test_roundtrip_with_write(self, tmp_path: Path) -> None:
-        """Should round-trip config through write and parse."""
-        original = ContainerConfig(
-            name="test",
-            image="alpine:latest",
-            additional_packages=["git", "curl"],
-            pre_init_hooks=["echo pre"],
-            init_hooks=["echo init"],
-            remaining_options={"volume": ["/home:/home"]},
-        )
-        config_file = tmp_path / "config.ini"
-        write_config_without_header(config_file, original)
-
-        parsed = parse_config_without_header(config_file, "test")
-
-        assert parsed.name == "test"
-        assert parsed.image == "alpine:latest"
-        assert parsed.additional_packages == ["git", "curl"]
-        assert parsed.pre_init_hooks == ["echo pre"]
-        assert parsed.init_hooks == ["echo init"]
-        assert parsed.remaining_options["volume"] == ["/home:/home"]
 
 
 class TestGenerateContainerfile:
