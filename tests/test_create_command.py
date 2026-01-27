@@ -7,13 +7,13 @@ import pytest
 
 from distrobox_boost.command.create import (
     BAKED_FLAGS,
+    create_pre_hook,
     extract_arg_value,
-    get_boost_image,
-    has_boost_image,
     remove_args,
     replace_arg_value,
     run_create,
 )
+from distrobox_boost.utils.builder import get_boost_image_name, has_config
 
 
 class TestExtractArgValue:
@@ -157,51 +157,43 @@ class TestRemoveArgs:
         assert result == []
 
 
-class TestHasBoostImage:
-    """Tests for has_boost_image function."""
+class TestHasConfig:
+    """Tests for has_config function (in builder.py)."""
 
     def test_returns_true_when_config_exists(self, tmp_path: Path) -> None:
-        """Should return True when distrobox.ini exists."""
+        """Should return True when config file exists."""
         config_dir = tmp_path / "mycontainer"
         config_dir.mkdir()
-        (config_dir / "distrobox.ini").write_text("[mycontainer]\nimage=test\n")
+        (config_dir / "distrobox.ini").write_text("image=test\n")
 
         with patch(
-            "distrobox_boost.command.create.get_container_cache_dir",
-            return_value=config_dir,
+            "distrobox_boost.utils.builder.get_container_config_file",
+            return_value=config_dir / "distrobox.ini",
         ):
-            assert has_boost_image("mycontainer") is True
+            assert has_config("mycontainer") is True
 
     def test_returns_false_when_config_missing(self, tmp_path: Path) -> None:
-        """Should return False when distrobox.ini doesn't exist."""
+        """Should return False when config file doesn't exist."""
         config_dir = tmp_path / "mycontainer"
         config_dir.mkdir()
 
         with patch(
-            "distrobox_boost.command.create.get_container_cache_dir",
-            return_value=config_dir,
+            "distrobox_boost.utils.builder.get_container_config_file",
+            return_value=config_dir / "distrobox.ini",
         ):
-            assert has_boost_image("mycontainer") is False
-
-    def test_returns_false_when_dir_missing(self, tmp_path: Path) -> None:
-        """Should return False when cache directory doesn't exist."""
-        with patch(
-            "distrobox_boost.command.create.get_container_cache_dir",
-            return_value=tmp_path / "nonexistent",
-        ):
-            assert has_boost_image("mycontainer") is False
+            assert has_config("mycontainer") is False
 
 
-class TestGetBoostImage:
-    """Tests for get_boost_image function."""
+class TestGetBoostImageName:
+    """Tests for get_boost_image_name function (in builder.py)."""
 
     def test_returns_correct_image_name(self) -> None:
         """Should return image name in format {name}:latest."""
-        assert get_boost_image("mycontainer") == "mycontainer:latest"
+        assert get_boost_image_name("mycontainer") == "mycontainer:latest"
 
     def test_handles_special_characters(self) -> None:
         """Should handle container names with special characters."""
-        assert get_boost_image("my-container_123") == "my-container_123:latest"
+        assert get_boost_image_name("my-container_123") == "my-container_123:latest"
 
 
 class TestBakedFlags:
@@ -215,56 +207,149 @@ class TestBakedFlags:
         assert "--pre-init-hooks" in BAKED_FLAGS
 
 
-class TestRunCreate:
-    """Tests for run_create function."""
+class TestCreatePreHook:
+    """Tests for create_pre_hook function."""
 
-    @patch("distrobox_boost.command.create.subprocess.run")
-    def test_without_boost_image_passthrough(self, mock_run: MagicMock) -> None:
-        """Should pass through to distrobox create when no boost image."""
-        mock_run.return_value = MagicMock(returncode=0)
+    def test_returns_none_without_name(self) -> None:
+        """Should return None when no --name flag is present."""
+        args = ["--image", "alpine"]
+        result = create_pre_hook(args)
+        assert result is None
 
-        with patch(
-            "distrobox_boost.command.create.has_boost_image",
-            return_value=False,
+    def test_returns_none_when_no_config(self) -> None:
+        """Should return None when no config exists for the container."""
+        with patch("distrobox_boost.command.create.has_config", return_value=False):
+            args = ["--name", "test", "--image", "alpine"]
+            result = create_pre_hook(args)
+            assert result is None
+
+    def test_builds_image_when_needed(self) -> None:
+        """Should build image when config exists but image doesn't."""
+        with (
+            patch("distrobox_boost.command.create.has_config", return_value=True),
+            patch("distrobox_boost.command.create.needs_rebuild", return_value=True),
+            patch("distrobox_boost.command.create.ensure_boost_image", return_value=0) as mock_build,
+            patch("distrobox_boost.command.create.get_boost_image_name", return_value="test:latest"),
         ):
-            result = run_create(["--name", "test", "--image", "alpine"])
+            args = ["--name", "test", "--image", "alpine"]
+            create_pre_hook(args)
+            mock_build.assert_called_once_with("test")
 
-        mock_run.assert_called_once()
-        cmd = mock_run.call_args[0][0]
-        assert cmd == ["distrobox", "create", "--name", "test", "--image", "alpine"]
-        assert result == 0
-
-    @patch("distrobox_boost.command.create.subprocess.run")
-    def test_with_boost_image_replaces_image(self, mock_run: MagicMock) -> None:
-        """Should replace image when boost image exists."""
-        mock_run.return_value = MagicMock(returncode=0)
-
-        with patch(
-            "distrobox_boost.command.create.has_boost_image",
-            return_value=True,
+    def test_returns_none_on_build_failure(self) -> None:
+        """Should return None when image build fails."""
+        with (
+            patch("distrobox_boost.command.create.has_config", return_value=True),
+            patch("distrobox_boost.command.create.needs_rebuild", return_value=True),
+            patch("distrobox_boost.command.create.ensure_boost_image", return_value=1),
         ):
-            run_create(["--name", "test", "--image", "alpine"])
+            args = ["--name", "test", "--image", "alpine"]
+            result = create_pre_hook(args)
+            assert result is None
 
-        cmd = mock_run.call_args[0][0]
-        assert "--image" in cmd
-        image_idx = cmd.index("--image")
-        assert cmd[image_idx + 1] == "test:latest"
-
-    @patch("distrobox_boost.command.create.subprocess.run")
-    def test_with_boost_image_removes_baked_flags(self, mock_run: MagicMock) -> None:
-        """Should remove baked flags when boost image exists."""
-        mock_run.return_value = MagicMock(returncode=0)
-
-        with patch(
-            "distrobox_boost.command.create.has_boost_image",
-            return_value=True,
+    def test_replaces_image_and_removes_baked_flags(self) -> None:
+        """Should replace image and remove baked flags when config exists."""
+        with (
+            patch("distrobox_boost.command.create.has_config", return_value=True),
+            patch("distrobox_boost.command.create.needs_rebuild", return_value=False),
+            patch("distrobox_boost.command.create.get_boost_image_name", return_value="test:latest"),
         ):
-            run_create([
+            args = [
                 "--name", "test",
                 "--image", "alpine",
                 "--additional-packages", "git",
                 "--init-hooks", "echo hello",
-            ])
+            ]
+            result = create_pre_hook(args)
+
+            assert result is not None
+            # Check image was replaced
+            assert "--image" in result
+            image_idx = result.index("--image")
+            assert result[image_idx + 1] == "test:latest"
+            # Check baked flags were removed
+            assert "--additional-packages" not in result
+            assert "git" not in result
+            assert "--init-hooks" not in result
+            assert "echo hello" not in result
+
+
+class TestRunCreate:
+    """Tests for run_create function."""
+
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.create.has_config")
+    def test_without_boost_config_passthrough(
+        self, mock_has_config: MagicMock, mock_which: MagicMock, mock_run: MagicMock
+    ) -> None:
+        """Should pass through to distrobox create when no config exists."""
+        mock_has_config.return_value = False
+        mock_which.return_value = "/usr/bin/distrobox-create"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = run_create(["--name", "test", "--image", "alpine"])
+
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "/usr/bin/distrobox-create" in cmd
+        assert "--name" in cmd
+        assert "test" in cmd
+        assert "--image" in cmd
+        assert "alpine" in cmd
+        assert result == 0
+
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.create.get_boost_image_name")
+    @patch("distrobox_boost.command.create.needs_rebuild")
+    @patch("distrobox_boost.command.create.has_config")
+    def test_with_boost_config_replaces_image(
+        self,
+        mock_has_config: MagicMock,
+        mock_needs_rebuild: MagicMock,
+        mock_get_image: MagicMock,
+        mock_which: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Should replace image when config exists."""
+        mock_has_config.return_value = True
+        mock_needs_rebuild.return_value = False
+        mock_get_image.return_value = "test:latest"
+        mock_which.return_value = "/usr/bin/distrobox-create"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        run_create(["--name", "test", "--image", "alpine"])
+
+        cmd = mock_run.call_args[0][0]
+        # Check that the boost image is used
+        assert "test:latest" in cmd
+
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.create.get_boost_image_name")
+    @patch("distrobox_boost.command.create.needs_rebuild")
+    @patch("distrobox_boost.command.create.has_config")
+    def test_with_boost_config_removes_baked_flags(
+        self,
+        mock_has_config: MagicMock,
+        mock_needs_rebuild: MagicMock,
+        mock_get_image: MagicMock,
+        mock_which: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Should remove baked flags when config exists."""
+        mock_has_config.return_value = True
+        mock_needs_rebuild.return_value = False
+        mock_get_image.return_value = "test:latest"
+        mock_which.return_value = "/usr/bin/distrobox-create"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        run_create([
+            "--name", "test",
+            "--image", "alpine",
+            "--additional-packages", "git",
+            "--init-hooks", "echo hello",
+        ])
 
         cmd = mock_run.call_args[0][0]
         assert "--additional-packages" not in cmd
@@ -272,43 +357,32 @@ class TestRunCreate:
         assert "--init-hooks" not in cmd
         assert "echo hello" not in cmd
 
-    @patch("distrobox_boost.command.create.subprocess.run")
-    def test_without_name_flag(self, mock_run: MagicMock) -> None:
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    def test_without_name_flag(
+        self, mock_which: MagicMock, mock_run: MagicMock
+    ) -> None:
         """Should pass through when name flag is missing."""
+        mock_which.return_value = "/usr/bin/distrobox-create"
         mock_run.return_value = MagicMock(returncode=0)
 
         run_create(["--image", "alpine"])
 
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["distrobox", "create", "--image", "alpine"]
+        assert "--image" in cmd
+        assert "alpine" in cmd
 
-    @patch("distrobox_boost.command.create.subprocess.run")
-    def test_returns_subprocess_exit_code(self, mock_run: MagicMock) -> None:
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.create.has_config")
+    def test_returns_subprocess_exit_code(
+        self, mock_has_config: MagicMock, mock_which: MagicMock, mock_run: MagicMock
+    ) -> None:
         """Should return the subprocess exit code."""
+        mock_has_config.return_value = False
+        mock_which.return_value = "/usr/bin/distrobox-create"
         mock_run.return_value = MagicMock(returncode=42)
 
-        with patch(
-            "distrobox_boost.command.create.has_boost_image",
-            return_value=False,
-        ):
-            result = run_create(["--name", "test", "--image", "alpine"])
+        result = run_create(["--name", "test", "--image", "alpine"])
 
         assert result == 42
-
-    @patch("distrobox_boost.command.create.subprocess.run")
-    @patch("distrobox_boost.command.create.print")
-    def test_prints_message_when_using_boost(
-        self, mock_print: MagicMock, mock_run: MagicMock
-    ) -> None:
-        """Should print informational message when using optimized image."""
-        mock_run.return_value = MagicMock(returncode=0)
-
-        with patch(
-            "distrobox_boost.command.create.has_boost_image",
-            return_value=True,
-        ):
-            run_create(["--name", "mytest", "--image", "alpine"])
-
-        mock_print.assert_called_once()
-        assert "mytest" in mock_print.call_args[0][0]
-        assert "optimized" in mock_print.call_args[0][0].lower()

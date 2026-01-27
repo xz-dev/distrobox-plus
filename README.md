@@ -14,7 +14,7 @@ This can take several minutes. **distrobox-boost** pre-bakes all of this into a 
 
 ```
 Traditional:  create → pull → install deps → install packages → run hooks → ready (slow)
-With boost:   rebuild (once) → create → ready (fast)
+With boost:   create → ready (fast, image built automatically on first run)
 ```
 
 ## Installation
@@ -50,24 +50,24 @@ init_hooks="echo 'Container initialized'"
 volume=/home/user:/home/user
 ```
 
-### 2. Import and build optimized image
+### 2. Import config
 
 ```bash
 # Import your config
 distrobox-boost assemble import --file mybox.ini --name mybox
-
-# Build optimized image (run once, or when config changes)
-distrobox-boost assemble rebuild mybox
 ```
 
 ### 3. Create container (fast!)
 
 ```bash
-# Using assemble
-distrobox-boost assemble mybox create
+# Using assemble (image is built automatically on first run)
+distrobox-boost assemble create --file mybox.ini
 
-# Or using create directly (auto-detects boost image)
+# Or using create directly (auto-detects and builds boost image)
 distrobox-boost create --name mybox --image archlinux:latest
+
+# Or using ephemeral (internal create is automatically optimized)
+distrobox-boost ephemeral --name mybox --image archlinux:latest
 ```
 
 ## Commands
@@ -75,11 +75,34 @@ distrobox-boost create --name mybox --image archlinux:latest
 | Command | Description |
 |---------|-------------|
 | `assemble import --file <f> --name <n>` | Import original distrobox.ini config |
-| `assemble rebuild <name>` | Build optimized image with baked packages/hooks |
-| `assemble <name> create` | Create container using optimized config |
-| `assemble <name> rm` | Remove container |
-| `create [args...]` | Create container (uses boost image if available) |
+| `assemble [args...]` | Run distrobox assemble (with auto-optimization) |
+| `create [args...]` | Create container (auto-builds boost image if config exists) |
+| `ephemeral [args...]` | Run ephemeral (internal create is auto-optimized) |
 | `enter`, `rm`, `list`, `stop`, ... | Passed through to distrobox |
+
+## How It Works (Shim Architecture)
+
+distrobox-boost acts as a **shim** for distrobox. When you run any command:
+
+```
+User: distrobox-boost ephemeral --image alpine --name mybox
+                  ↓
+        [ephemeral runs with PATH hijacking]
+                  ↓
+        ephemeral internally calls distrobox-create
+                  ↓
+        [hijacked → distrobox-boost create]
+                  ↓
+        [create pre-hook: detect config → build image → replace args]
+                  ↓
+        [real distrobox-create runs with optimized image]
+```
+
+The magic happens in the `create` pre-hook:
+1. Checks if a config exists for the container name
+2. Builds the optimized image if needed (automatically, on first run)
+3. Replaces `--image` with the boost image
+4. Removes flags that were baked in (`--additional-packages`, `--init-hooks`, etc.)
 
 ## Data Storage
 
@@ -103,17 +126,16 @@ init_hooks="echo 'Container initialized'"
 volume=/home/user:/home/user
 ```
 
-**Impact:** This is your master config. Edit this file and run `rebuild` to apply changes.
+**Impact:** This is your master config. Edit this file to change settings.
 
 ### Cache Directory
 `~/.cache/distrobox-boost/<container-name>/`
 
 | File | Purpose |
 |------|---------|
-| `distrobox.ini` | Optimized config (auto-generated, uses local image) |
 | `Containerfile` | Generated Containerfile (for debugging) |
 
-**Impact:** These are auto-generated. Safe to delete - will be recreated on next `rebuild`.
+**Impact:** Auto-generated. Safe to delete - will be recreated on next build.
 
 ### Container Images
 
@@ -123,13 +145,13 @@ Optimized images are stored in your container runtime (podman/docker) as `<name>
 # List boost images
 podman images | grep -E '^[a-z]+\s+latest'
 
-# Remove a boost image
+# Remove a boost image (will be rebuilt on next create)
 podman rmi mybox:latest
 ```
 
 ## What Gets Baked?
 
-When you run `rebuild`, these fields are baked into the image:
+When the image is built (automatically on first create), these fields are baked into the image:
 
 | Field | Baked? | Notes |
 |-------|--------|-------|
@@ -137,9 +159,7 @@ When you run `rebuild`, these fields are baked into the image:
 | `additional_packages` | Yes | Pre-installed |
 | `init_hooks` | Yes | Pre-executed |
 | `pre_init_hooks` | Yes | Pre-executed |
-| `volume`, `nvidia`, etc. | No | Kept in optimized config |
-
-The optimized config only contains non-baked fields plus a reference to your local image.
+| `volume`, `nvidia`, etc. | No | Kept in config |
 
 ---
 
@@ -151,30 +171,35 @@ The optimized config only contains non-baked fields plus a reference to your loc
 src/distrobox_boost/
 ├── __main__.py              # CLI entry point and command routing
 ├── command/
-│   ├── assemble.py          # import, rebuild, assemble commands
-│   ├── create.py            # Intercepts create, substitutes boost image
-│   └── passthrough.py       # Forwards commands to distrobox
+│   ├── assemble.py          # import subcommand, assemble passthrough
+│   ├── create.py            # create pre-hook (core magic: auto-build + arg substitution)
+│   └── wrapper.py           # Generic pre/post hook framework
 └── utils/
+    ├── builder.py           # Image building logic
     ├── config.py            # XDG directory management (platformdirs)
-    ├── hijack.py            # PATH hijacking for distrobox-assemble
+    ├── hijack.py            # PATH hijacking for all distrobox commands
     ├── templates.py         # Cross-distro shell command generation
     └── utils.py             # Image builder detection
 ```
 
 ### How Hijacking Works
 
-When `distrobox-assemble` runs, it internally calls `distrobox-create`. To intercept these calls, distrobox-boost uses PATH hijacking:
+When commands like `distrobox-assemble` or `distrobox-ephemeral` run, they internally call `distrobox-create`. To intercept these calls, distrobox-boost uses PATH hijacking:
 
-1. Creates a temporary directory with interceptor scripts
-2. Symlinks `distrobox-assemble` to the real binary
-3. Creates wrapper scripts that route `distrobox-create` → `distrobox-boost create`
-4. Runs `distrobox-assemble` from this directory (uses `dirname $0` to find siblings)
+1. Creates a temporary directory with interceptor scripts for ALL distrobox commands
+2. Each script routes to `distrobox-boost <command>`
+3. Runs the original command with this directory prepended to PATH
+4. The `create` command has a pre-hook that applies optimizations
 
 ```
 /tmp/distrobox-boost-xxx/
-├── distrobox-assemble  → /usr/bin/distrobox-assemble (symlink)
+├── distrobox           → routes subcommands to distrobox-boost
 ├── distrobox-create    → exec distrobox-boost create "$@"
-└── distrobox           → routes 'create' to boost, others to real distrobox
+├── distrobox-assemble  → exec distrobox-boost assemble "$@"
+├── distrobox-ephemeral → exec distrobox-boost ephemeral "$@"
+├── distrobox-enter     → exec distrobox-boost enter "$@"
+├── distrobox-rm        → exec distrobox-boost rm "$@"
+└── ...
 ```
 
 ### Cross-Distribution Support
@@ -193,7 +218,7 @@ The generated Containerfile includes conditional logic to handle any supported d
 
 ### Image Build Process
 
-`rebuild` generates a Containerfile with these steps:
+When the image is built, the Containerfile includes these steps:
 
 1. **Upgrade** - Update all system packages
 2. **Pre-init hooks** - Run user-defined pre-initialization commands
@@ -225,13 +250,14 @@ uv run pytest -v --ignore=tests/test_integration.py
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
-| command/assemble.py | 46 | Full |
-| command/create.py | 26 | Full |
-| utils/hijack.py | 21 | Full |
+| command/assemble.py | 35 | Full |
+| command/create.py | 30 | Full |
+| command/wrapper.py | - | Tested via other modules |
+| utils/builder.py | - | Tested via assemble |
+| utils/hijack.py | 18 | Full |
 | utils/templates.py | 15 | Full |
 | utils/config.py | 20 | Full |
 | utils/utils.py | 6 | Full |
-| CLI (__main__.py) | 2 | Basic |
 | Integration | 15 | 5 distros |
 
 ## License

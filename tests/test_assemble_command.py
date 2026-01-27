@@ -6,16 +6,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from distrobox_boost.command.assemble import (
-    DISTROBOX_PACKAGES,
+    BAKED_FIELDS,
     ContainerConfig,
     _parse_multiline_value,
-    build_image,
-    generate_assemble_content,
-    generate_containerfile,
     parse_assemble_file,
-    parse_config_without_header,
     run_assemble,
     write_config_without_header,
+)
+from distrobox_boost.utils.builder import (
+    DISTROBOX_PACKAGES,
+    build_image,
+    generate_containerfile,
+    parse_config_file,
 )
 
 
@@ -51,7 +53,7 @@ class TestDistroboxPackages:
 class TestBuildImage:
     """Tests for build_image function."""
 
-    @patch("distrobox_boost.command.assemble.subprocess.run")
+    @patch("distrobox_boost.utils.builder.subprocess.run")
     def test_buildah_uses_bud_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'bud' subcommand for buildah."""
         mock_subprocess.return_value = MagicMock(returncode=0)
@@ -62,7 +64,7 @@ class TestBuildImage:
         assert "-f" in call_args
         assert "-" in call_args  # Read from stdin
 
-    @patch("distrobox_boost.command.assemble.subprocess.run")
+    @patch("distrobox_boost.utils.builder.subprocess.run")
     def test_podman_uses_build_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'build' subcommand for podman."""
         mock_subprocess.return_value = MagicMock(returncode=0)
@@ -71,7 +73,7 @@ class TestBuildImage:
         assert call_args[0] == "podman"
         assert call_args[1] == "build"
 
-    @patch("distrobox_boost.command.assemble.subprocess.run")
+    @patch("distrobox_boost.utils.builder.subprocess.run")
     def test_docker_uses_build_command(self, mock_subprocess: MagicMock) -> None:
         """Should use 'build' subcommand for docker."""
         mock_subprocess.return_value = MagicMock(returncode=0)
@@ -80,14 +82,14 @@ class TestBuildImage:
         assert call_args[0] == "docker"
         assert call_args[1] == "build"
 
-    @patch("distrobox_boost.command.assemble.subprocess.run")
+    @patch("distrobox_boost.utils.builder.subprocess.run")
     def test_returns_exit_code(self, mock_subprocess: MagicMock) -> None:
         """Should return the subprocess exit code."""
         mock_subprocess.return_value = MagicMock(returncode=42)
         result = build_image("podman", "test-image", "FROM alpine\n")
         assert result == 42
 
-    @patch("distrobox_boost.command.assemble.subprocess.run")
+    @patch("distrobox_boost.utils.builder.subprocess.run")
     def test_passes_containerfile_to_stdin(self, mock_subprocess: MagicMock) -> None:
         """Should pass containerfile content to stdin."""
         mock_subprocess.return_value = MagicMock(returncode=0)
@@ -240,13 +242,13 @@ class TestWriteConfigWithoutHeader:
         assert "nvidia=true" in content
 
 
-class TestParseConfigWithoutHeader:
-    """Tests for parse_config_without_header function."""
+class TestParseConfigFile:
+    """Tests for parse_config_file function (in builder.py)."""
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         """Should raise ValueError when file not found."""
         with pytest.raises(ValueError, match="not found"):
-            parse_config_without_header(tmp_path / "nonexistent.ini", "test")
+            parse_config_file(tmp_path / "nonexistent.ini", "test")
 
     def test_parse_basic_config(self, tmp_path: Path) -> None:
         """Should parse config without section header."""
@@ -254,7 +256,7 @@ class TestParseConfigWithoutHeader:
         ini_file.write_text("""image=alpine:latest
 additional_packages=git curl
 """)
-        result = parse_config_without_header(ini_file, "mycontainer")
+        result = parse_config_file(ini_file, "mycontainer")
 
         assert result.name == "mycontainer"
         assert result.image == "alpine:latest"
@@ -267,7 +269,7 @@ additional_packages=git curl
 pre_init_hooks="echo pre1" "echo pre2"
 init_hooks="echo init"
 """)
-        result = parse_config_without_header(ini_file, "mycontainer")
+        result = parse_config_file(ini_file, "mycontainer")
 
         assert result.pre_init_hooks == ["echo pre1", "echo pre2"]
         assert result.init_hooks == ["echo init"]
@@ -279,7 +281,7 @@ init_hooks="echo init"
 volume=/home:/home
 nvidia=true
 """)
-        result = parse_config_without_header(ini_file, "mycontainer")
+        result = parse_config_file(ini_file, "mycontainer")
 
         assert "volume" in result.remaining_options
         assert "nvidia" in result.remaining_options
@@ -298,7 +300,7 @@ nvidia=true
         config_file = tmp_path / "config.ini"
         write_config_without_header(config_file, original)
 
-        parsed = parse_config_without_header(config_file, "test")
+        parsed = parse_config_file(config_file, "test")
 
         assert parsed.name == "test"
         assert parsed.image == "alpine:latest"
@@ -306,37 +308,6 @@ nvidia=true
         assert parsed.pre_init_hooks == ["echo pre"]
         assert parsed.init_hooks == ["echo init"]
         assert parsed.remaining_options["volume"] == ["/home:/home"]
-
-
-class TestGenerateAssembleContent:
-    """Tests for generate_assemble_content function."""
-
-    def test_basic_content(self) -> None:
-        """Should generate basic INI content."""
-        config = ContainerConfig(
-            name="test",
-            image="old:image",
-            remaining_options={"volume": ["/home:/home"]},
-        )
-        result = generate_assemble_content(config, "test:latest")
-
-        assert "[test]" in result
-        assert "image=test:latest" in result
-        assert "volume=/home:/home" in result
-
-    def test_no_baked_fields_in_output(self) -> None:
-        """Should not include baked fields in output."""
-        config = ContainerConfig(
-            name="test",
-            image="old:image",
-            additional_packages=["git"],
-            init_hooks=["echo hello"],
-        )
-        result = generate_assemble_content(config, "test:latest")
-
-        assert "additional_packages" not in result
-        assert "init_hooks" not in result
-        assert "pre_init_hooks" not in result
 
 
 class TestGenerateContainerfile:
@@ -462,161 +433,32 @@ class TestGenerateContainerfile:
 class TestRunAssemble:
     """Tests for run_assemble function."""
 
-    def test_returns_error_when_config_not_found(self, tmp_path: Path) -> None:
-        """Should return error when optimized config doesn't exist."""
-        with patch(
-            "distrobox_boost.command.assemble.get_container_cache_dir",
-            return_value=tmp_path / "nonexistent",
-        ):
-            result = run_assemble("mycontainer", ["create"])
-            assert result == 1
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    def test_runs_assemble_with_hijack(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
+        """Should run distrobox-assemble with hijack environment."""
+        mock_which.return_value = "/usr/bin/distrobox-assemble"
+        mock_run.return_value = MagicMock(returncode=0)
 
-    def test_passes_create_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'create' command to distrobox assemble via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
+        result = run_assemble(["create", "--file", "test.ini"])
 
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
+        assert result == 0
+        mock_run.assert_called_once()
+        # Verify environment has hijack directory in PATH
+        call_kwargs = mock_run.call_args
+        assert "env" in call_kwargs[1]
 
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 0
-            run_assemble("test", ["create"])
+    @patch("distrobox_boost.command.wrapper.shutil.which")
+    @patch("distrobox_boost.command.wrapper.subprocess.run")
+    def test_returns_exit_code(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
+        """Should return the exit code from distrobox assemble."""
+        mock_which.return_value = "/usr/bin/distrobox-assemble"
+        mock_run.return_value = MagicMock(returncode=42)
 
-            mock_run.assert_called_once()
-            cmd = mock_run.call_args[0][0]
-            assert "create" in cmd
-            assert "--file" in cmd
-            assert str(config_file) in cmd
+        result = run_assemble(["create"])
 
-    def test_passes_rm_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'rm' command to distrobox assemble via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
-
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
-
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 0
-            run_assemble("test", ["rm"])
-
-            cmd = mock_run.call_args[0][0]
-            assert "rm" in cmd
-            assert "--file" in cmd
-
-    def test_passes_replace_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass 'replace' command to distrobox assemble via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
-
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
-
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 0
-            run_assemble("test", ["replace"])
-
-            cmd = mock_run.call_args[0][0]
-            assert "replace" in cmd
-            assert "--file" in cmd
-
-    def test_passes_extra_flags_to_distrobox(self, tmp_path: Path) -> None:
-        """Should pass extra flags like --dry-run to distrobox assemble via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
-
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
-
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 0
-            run_assemble("test", ["create", "--dry-run"])
-
-            cmd = mock_run.call_args[0][0]
-            assert "create" in cmd
-            assert "--dry-run" in cmd
-            assert "--file" in cmd
-
-    def test_returns_distrobox_exit_code(self, tmp_path: Path) -> None:
-        """Should return the exit code from distrobox assemble via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
-
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
-
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 42
-            result = run_assemble("test", ["create"])
-
-            assert result == 42
-
-    def test_empty_passthrough_args(self, tmp_path: Path) -> None:
-        """Should work with empty passthrough args via hijack."""
-        config_file = tmp_path / "distrobox.ini"
-        config_file.write_text("[test]\nimage=test:latest\n")
-
-        mock_hijack = MagicMock()
-        mock_hijack.__enter__ = MagicMock(return_value=mock_hijack)
-        mock_hijack.__exit__ = MagicMock(return_value=False)
-        mock_hijack.assemble_path = tmp_path / "distrobox-assemble"
-
-        with (
-            patch(
-                "distrobox_boost.command.assemble.get_container_cache_dir",
-                return_value=tmp_path,
-            ),
-            patch("distrobox_boost.command.assemble.HijackManager", return_value=mock_hijack),
-            patch("distrobox_boost.command.assemble.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value.returncode = 0
-            run_assemble("test", [])
-
-            cmd = mock_run.call_args[0][0]
-            assert "--file" in cmd
+        assert result == 42

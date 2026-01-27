@@ -1,59 +1,79 @@
 """CLI entry point for distrobox-boost.
 
-distrobox-boost acts as a wrapper around distrobox, intercepting specific
-commands to apply optimizations while passing others through unchanged.
+distrobox-boost acts as a shim for distrobox, intercepting commands to
+apply optimizations while passing others through with PATH hijacking.
+
+Flow:
+    User: distrobox-boost ephemeral --image alpine
+              ↓
+    [ephemeral runs with hijacking]
+              ↓
+    ephemeral internally calls distrobox-create
+              ↓
+    [hijacked → distrobox-boost create]
+              ↓
+    [create pre-hook: detect config → build image → replace args]
+              ↓
+    [real distrobox-create runs with optimized image]
 
 Usage:
     distrobox-boost <command> [args...]
 
-Special commands:
-    assemble import --file <f> --name <n>   Import original config
-    assemble rebuild <name>                  Build optimized image
-    assemble <name> <args...>                Run assemble with hijacking
-    create [args...]                         Create with image replacement
+Commands that get special handling:
+    create      - Auto-builds optimized images, replaces --image
+    assemble    - Supports 'import' subcommand, runs with hijacking
+    ephemeral   - Runs with hijacking (intercepts internal create)
 
-Passthrough commands:
-    enter, rm, list, stop, upgrade, ephemeral, generate-entry -> distrobox
+Passthrough commands (run with hijacking):
+    enter, rm, stop, list, upgrade, generate-entry
 """
 
 import sys
 
 from distrobox_boost.command import assemble
 from distrobox_boost.command.create import run_create
-from distrobox_boost.command.passthrough import run_passthrough
+from distrobox_boost.command.wrapper import run_passthrough, run_with_hooks
 
-# Commands that pass through to distrobox unchanged
-PASSTHROUGH_COMMANDS = {
+# Commands that need hijacking (they call other distrobox commands internally)
+HIJACKED_COMMANDS = {
+    "ephemeral",  # Calls create, enter, rm
     "enter",
     "rm",
-    "list",
     "stop",
+    "list",
     "upgrade",
-    "ephemeral",
     "generate-entry",
 }
 
 
 def print_help() -> None:
     """Print usage information."""
-    print("""distrobox-boost - Enhanced distrobox workflow
+    print("""distrobox-boost - Shim for distrobox with automatic image optimization
 
 Usage: distrobox-boost <command> [args...]
 
 Commands:
-  assemble import --file <f> --name <n>   Import original assemble config
-  assemble rebuild <name>                  Build optimized image from config
-  assemble <name> <args...>                Run distrobox assemble with hijacking
-  create [args...]                         Create container (with boost image if available)
+  create [args...]                         Create container (auto-builds boost image)
+  assemble import --file <f> --name <n>    Import distrobox assemble config
+  assemble [args...]                       Run distrobox assemble (with hijacking)
+  ephemeral [args...]                      Run ephemeral (auto-optimizes create)
 
-Passthrough (forwarded to distrobox):
-  enter, rm, list, stop, upgrade, ephemeral, generate-entry
+Passthrough (with hijacking):
+  enter, rm, stop, list, upgrade, generate-entry
 
-Examples:
-  distrobox-boost assemble import --file mybox.ini --name mybox
-  distrobox-boost assemble rebuild mybox
-  distrobox-boost assemble mybox create
-  distrobox-boost list
+How it works:
+  1. Import your distrobox config:
+     distrobox-boost assemble import --file mybox.ini --name mybox
+
+  2. Create containers (image is built automatically on first run):
+     distrobox-boost create --name mybox --image archlinux:latest
+     # or
+     distrobox-boost assemble create --file mybox.ini
+
+  3. Use ephemeral (internal create is automatically optimized):
+     distrobox-boost ephemeral --image alpine:latest --name mybox
+
+The optimized image is built once and reused for all subsequent creates.
 """)
 
 
@@ -68,22 +88,20 @@ def main() -> int:
     command = args[0]
     rest = args[1:]
 
-    # Handle assemble subcommands
-    if command == "assemble":
-        return handle_assemble(rest)
-
-    # Handle create command (intercepted)
+    # Handle create command (special: has pre-hook for auto-build)
     if command == "create":
         return run_create(rest)
 
-    # Handle passthrough commands
-    if command in PASSTHROUGH_COMMANDS:
-        return run_passthrough(command, rest)
+    # Handle assemble command (special: supports import subcommand)
+    if command == "assemble":
+        return handle_assemble(rest)
 
-    # Unknown command
-    print(f"Unknown command: {command}")
-    print("Run 'distrobox-boost --help' for usage.")
-    return 1
+    # Handle commands that need hijacking
+    if command in HIJACKED_COMMANDS:
+        return run_with_hooks(command, rest, use_hijack=True)
+
+    # Unknown command - pass through to distrobox
+    return run_passthrough(command, rest)
 
 
 def handle_assemble(args: list[str]) -> int:
@@ -96,9 +114,9 @@ def handle_assemble(args: list[str]) -> int:
         Exit code.
     """
     if not args:
-        print("Usage: distrobox-boost assemble <subcommand|name> [args...]")
-        print("Subcommands: import, rebuild")
-        print("Or: distrobox-boost assemble <name> <distrobox-assemble-args>")
+        print("Usage: distrobox-boost assemble <subcommand|args...>")
+        print("Subcommands: import")
+        print("Or: distrobox-boost assemble [distrobox-assemble-args...]")
         return 1
 
     subcommand = args[0]
@@ -107,17 +125,8 @@ def handle_assemble(args: list[str]) -> int:
     if subcommand == "import":
         return handle_assemble_import(args[1:])
 
-    # assemble rebuild <name>
-    if subcommand == "rebuild":
-        if len(args) < 2:
-            print("Usage: distrobox-boost assemble rebuild <name>")
-            return 1
-        return assemble.run_rebuild(args[1])
-
-    # assemble <name> <args...> - run with hijacking
-    name = subcommand
-    passthrough = args[1:] if len(args) > 1 else []
-    return assemble.run_assemble(name, passthrough)
+    # Pass through to distrobox-assemble with hijacking
+    return assemble.run_assemble(args)
 
 
 def handle_assemble_import(args: list[str]) -> int:

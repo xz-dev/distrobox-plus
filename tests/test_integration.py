@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from distrobox_boost.command.assemble import (
+from distrobox_boost.utils.builder import (
     DISTROBOX_PACKAGES,
     build_image,
     generate_containerfile,

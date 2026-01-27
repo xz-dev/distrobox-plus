@@ -1,8 +1,19 @@
-"""Create command: intercept distrobox create and apply boost optimizations."""
+"""Create command: intercept distrobox create and apply boost optimizations.
 
-import subprocess
+This is where the core magic happens. When a create command is intercepted,
+we check if there's a config file for the container and automatically:
+1. Build the optimized image if needed
+2. Replace the --image argument with our boost image
+3. Remove flags that were baked into the image
+"""
 
-from distrobox_boost.utils.config import get_container_cache_dir
+from distrobox_boost.command.wrapper import run_with_hooks
+from distrobox_boost.utils.builder import (
+    ensure_boost_image,
+    get_boost_image_name,
+    has_config,
+    needs_rebuild,
+)
 
 
 def extract_arg_value(args: list[str], flags: list[str]) -> str | None:
@@ -104,34 +115,6 @@ def remove_args(args: list[str], flags: list[str]) -> list[str]:
     return result
 
 
-def has_boost_image(name: str) -> bool:
-    """Check if a boost-optimized config exists for the given container.
-
-    Args:
-        name: Container name.
-
-    Returns:
-        True if an optimized distrobox.ini exists.
-    """
-    cache_dir = get_container_cache_dir(name)
-    config_path = cache_dir / "distrobox.ini"
-    return config_path.exists()
-
-
-def get_boost_image(name: str) -> str:
-    """Get the boost image name for a container.
-
-    The image name follows the convention: {name}:latest
-
-    Args:
-        name: Container name.
-
-    Returns:
-        Image tag for the boost-optimized image.
-    """
-    return f"{name}:latest"
-
-
 # Flags that are baked into the optimized image and should be removed
 BAKED_FLAGS = [
     "--additional-packages",
@@ -141,12 +124,58 @@ BAKED_FLAGS = [
 ]
 
 
+def create_pre_hook(args: list[str]) -> list[str] | None:
+    """Pre-hook for create command - the core magic.
+
+    This hook:
+    1. Extracts the container name from args
+    2. Checks if we have a config for this container
+    3. Builds the optimized image if needed
+    4. Replaces --image with our boost image
+    5. Removes flags that were baked in
+
+    Args:
+        args: Original command arguments.
+
+    Returns:
+        Modified arguments, or None to use original args.
+    """
+    # Extract container name
+    name = extract_arg_value(args, ["--name", "-n"])
+
+    if not name:
+        # Can't optimize without a name
+        return None
+
+    if not has_config(name):
+        # No config for this container, pass through unchanged
+        return None
+
+    # Check if we need to build the image
+    if needs_rebuild(name):
+        print(f"[distrobox-boost] Building optimized image for '{name}'...")
+        result = ensure_boost_image(name)
+        if result != 0:
+            print(f"[distrobox-boost] Build failed, falling back to original image")
+            return None
+
+    # Get the boost image name
+    new_image = get_boost_image_name(name)
+
+    print(f"[distrobox-boost] Using optimized image '{new_image}' for '{name}'")
+
+    # Replace image and remove baked-in flags
+    modified_args = replace_arg_value(args, ["--image", "-i"], new_image)
+    modified_args = remove_args(modified_args, BAKED_FLAGS)
+
+    return modified_args
+
+
 def run_create(args: list[str]) -> int:
     """Run distrobox create with boost optimizations applied.
 
-    If a boost-optimized image exists for the container, this function:
-    - Replaces --image with the optimized image
-    - Removes flags that were baked into the image
+    This uses the wrapper framework with our create_pre_hook.
+    The hook automatically builds images and substitutes parameters.
 
     Args:
         args: Command-line arguments (excluding 'create' itself).
@@ -154,18 +183,9 @@ def run_create(args: list[str]) -> int:
     Returns:
         Exit code from distrobox create.
     """
-    # Extract container name
-    name = extract_arg_value(args, ["--name", "-n"])
-
-    if name and has_boost_image(name):
-        print(f"[distrobox-boost] Using optimized image for '{name}'")
-        new_image = get_boost_image(name)
-
-        # Replace image and remove baked-in flags
-        args = replace_arg_value(args, ["--image", "-i"], new_image)
-        args = remove_args(args, BAKED_FLAGS)
-
-    # Pass through to real distrobox create
-    cmd = ["distrobox", "create", *args]
-    result = subprocess.run(cmd)
-    return result.returncode
+    return run_with_hooks(
+        "create",
+        args,
+        pre_hook=create_pre_hook,
+        use_hijack=False,  # create doesn't call other distrobox commands internally
+    )
