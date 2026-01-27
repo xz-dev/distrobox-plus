@@ -21,16 +21,16 @@ Usage:
 
 Commands that get special handling:
     create      - Auto-builds optimized images, replaces --image
-    assemble    - Supports 'import' subcommand, runs with hijacking
+    profile     - Manage container configuration profiles
     ephemeral   - Runs with hijacking (intercepts internal create)
 
 Passthrough commands (run with hijacking):
-    enter, rm, stop, list, upgrade, generate-entry
+    enter, rm, stop, list, upgrade, generate-entry, assemble
 """
 
 import sys
 
-from distrobox_boost.command import assemble
+from distrobox_boost.command import profile
 from distrobox_boost.command.create import run_create
 from distrobox_boost.command.wrapper import run_passthrough, run_with_hooks
 
@@ -43,6 +43,7 @@ HIJACKED_COMMANDS = {
     "list",
     "upgrade",
     "generate-entry",
+    "assemble",  # Intercept internal create calls
 }
 
 
@@ -53,17 +54,19 @@ def print_help() -> None:
 Usage: distrobox-boost <command> [args...]
 
 Commands:
-  create [args...]                         Create container (auto-builds boost image)
-  assemble import --file <f> --name <n>    Import distrobox assemble config
-  assemble [args...]                       Run distrobox assemble (with hijacking)
-  ephemeral [args...]                      Run ephemeral (auto-optimizes create)
+  create [args...]                          Create container (auto-builds boost image)
+  profile import --file <f> --name <n>      Import distrobox assemble config
+  profile list                              List configured profiles
+  profile rm <name>                         Remove a profile
+  assemble [args...]                        Run distrobox assemble (with hijacking)
+  ephemeral [args...]                       Run ephemeral (auto-optimizes create)
 
 Passthrough (with hijacking):
   enter, rm, stop, list, upgrade, generate-entry
 
 How it works:
   1. Import your distrobox config:
-     distrobox-boost assemble import --file mybox.ini --name mybox
+     distrobox-boost profile import --file mybox.ini --name mybox
 
   2. Create containers (image is built automatically on first run):
      distrobox-boost create --name mybox --image archlinux:latest
@@ -92,9 +95,9 @@ def main() -> int:
     if command == "create":
         return run_create(rest)
 
-    # Handle assemble command (special: supports import subcommand)
-    if command == "assemble":
-        return handle_assemble(rest)
+    # Handle profile command (manage configuration profiles)
+    if command == "profile":
+        return profile.run_profile(rest)
 
     # Handle commands that need hijacking
     if command in HIJACKED_COMMANDS:
@@ -102,61 +105,6 @@ def main() -> int:
 
     # Unknown command - pass through to distrobox
     return run_passthrough(command, rest)
-
-
-def handle_assemble(args: list[str]) -> int:
-    """Handle assemble subcommands.
-
-    Args:
-        args: Arguments after 'assemble'.
-
-    Returns:
-        Exit code.
-    """
-    if not args:
-        print("Usage: distrobox-boost assemble <subcommand|args...>")
-        print("Subcommands: import")
-        print("Or: distrobox-boost assemble [distrobox-assemble-args...]")
-        return 1
-
-    subcommand = args[0]
-
-    # assemble import --file <f> --name <n>
-    if subcommand == "import":
-        return handle_assemble_import(args[1:])
-
-    # Pass through to distrobox-assemble with hijacking
-    return assemble.run_assemble(args)
-
-
-def handle_assemble_import(args: list[str]) -> int:
-    """Handle 'assemble import' command.
-
-    Args:
-        args: Arguments after 'import'.
-
-    Returns:
-        Exit code.
-    """
-    file_path = None
-    name = None
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--file" and i + 1 < len(args):
-            file_path = args[i + 1]
-            i += 2
-        elif args[i] == "--name" and i + 1 < len(args):
-            name = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    if not file_path or not name:
-        print("Usage: distrobox-boost assemble import --file <file> --name <name>")
-        return 1
-
-    return assemble.run_import(file_path, name)
 
 
 if __name__ == "__main__":

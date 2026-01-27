@@ -1,14 +1,11 @@
-"""Tests for command/assemble.py."""
+"""Tests for command/profile.py and related utilities."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from distrobox_boost.command.assemble import (
-    run_assemble,
-    write_config_without_header,
-)
+from distrobox_boost.command.profile import write_config_without_header
 from distrobox_boost.utils.builder import (
     DISTROBOX_PACKAGES,
     build_image,
@@ -430,37 +427,3 @@ class TestGenerateContainerfile:
         hooks_pos = result.find("# Init hooks")
 
         assert upgrade_pos < pre_hooks_pos < install_pos < packages_pos < hooks_pos
-
-
-class TestRunAssemble:
-    """Tests for run_assemble function."""
-
-    @patch("distrobox_boost.command.wrapper.shutil.which")
-    @patch("distrobox_boost.command.wrapper.subprocess.run")
-    def test_runs_assemble_with_hijack(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
-        """Should run distrobox-assemble with hijack environment."""
-        mock_which.return_value = "/usr/bin/distrobox-assemble"
-        mock_run.return_value = MagicMock(returncode=0)
-
-        result = run_assemble(["create", "--file", "test.ini"])
-
-        assert result == 0
-        mock_run.assert_called_once()
-        # Verify environment has hijack directory in PATH
-        call_kwargs = mock_run.call_args
-        assert "env" in call_kwargs[1]
-
-    @patch("distrobox_boost.command.wrapper.shutil.which")
-    @patch("distrobox_boost.command.wrapper.subprocess.run")
-    def test_returns_exit_code(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
-        """Should return the exit code from distrobox assemble."""
-        mock_which.return_value = "/usr/bin/distrobox-assemble"
-        mock_run.return_value = MagicMock(returncode=42)
-
-        result = run_assemble(["create"])
-
-        assert result == 42
