@@ -6,10 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from distrobox_boost.command.assemble import (
-    BAKED_FIELDS,
-    ContainerConfig,
-    _parse_multiline_value,
-    parse_assemble_file,
     run_assemble,
     write_config_without_header,
 )
@@ -17,7 +13,13 @@ from distrobox_boost.utils.builder import (
     DISTROBOX_PACKAGES,
     build_image,
     generate_containerfile,
-    parse_config_file,
+)
+from distrobox_boost.utils.parsing import (
+    BAKED_FIELDS,
+    ContainerConfig,
+    parse_config_with_header,
+    parse_config_without_header,
+    parse_multiline_value,
 )
 
 
@@ -101,46 +103,46 @@ class TestBuildImage:
 
 
 class TestParseMultilineValue:
-    """Tests for _parse_multiline_value function."""
+    """Tests for parse_multiline_value function."""
 
     def test_empty_string(self) -> None:
         """Should return empty list for empty string."""
-        assert _parse_multiline_value("") == []
+        assert parse_multiline_value("") == []
 
     def test_whitespace_only(self) -> None:
         """Should return empty list for whitespace only."""
-        assert _parse_multiline_value("   ") == []
+        assert parse_multiline_value("   ") == []
 
     def test_space_separated(self) -> None:
         """Should parse space-separated values."""
-        result = _parse_multiline_value("git curl wget")
+        result = parse_multiline_value("git curl wget")
         assert result == ["git", "curl", "wget"]
 
     def test_quoted_strings(self) -> None:
         """Should parse quoted strings (multiline hooks style)."""
-        result = _parse_multiline_value('"echo hello" "echo world"')
+        result = parse_multiline_value('"echo hello" "echo world"')
         assert result == ["echo hello", "echo world"]
 
     def test_single_quoted_string(self) -> None:
         """Should parse single quoted string."""
-        result = _parse_multiline_value('"echo hello"')
+        result = parse_multiline_value('"echo hello"')
         assert result == ["echo hello"]
 
 
-class TestParseAssembleFile:
-    """Tests for parse_assemble_file function."""
+class TestParseConfigWithHeader:
+    """Tests for parse_config_with_header function."""
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         """Should raise ValueError when file not found."""
         with pytest.raises(ValueError, match="not found"):
-            parse_assemble_file(tmp_path / "nonexistent.ini", "test")
+            parse_config_with_header(tmp_path / "nonexistent.ini", "test")
 
     def test_section_not_found(self, tmp_path: Path) -> None:
         """Should raise ValueError when section not found."""
         ini_file = tmp_path / "test.ini"
         ini_file.write_text("[other]\nimage=alpine\n")
         with pytest.raises(ValueError, match="not found"):
-            parse_assemble_file(ini_file, "mycontainer")
+            parse_config_with_header(ini_file, "mycontainer")
 
     def test_parse_basic_config(self, tmp_path: Path) -> None:
         """Should parse basic container config."""
@@ -149,7 +151,7 @@ class TestParseAssembleFile:
 image=alpine:latest
 additional_packages=git curl
 """)
-        result = parse_assemble_file(ini_file, "mycontainer")
+        result = parse_config_with_header(ini_file, "mycontainer")
 
         assert result.name == "mycontainer"
         assert result.image == "alpine:latest"
@@ -163,7 +165,7 @@ image=fedora:latest
 pre_init_hooks="echo pre1" "echo pre2"
 init_hooks="echo init"
 """)
-        result = parse_assemble_file(ini_file, "mycontainer")
+        result = parse_config_with_header(ini_file, "mycontainer")
 
         assert result.pre_init_hooks == ["echo pre1", "echo pre2"]
         assert result.init_hooks == ["echo init"]
@@ -176,7 +178,7 @@ image=alpine:latest
 volume=/home:/home
 nvidia=true
 """)
-        result = parse_assemble_file(ini_file, "mycontainer")
+        result = parse_config_with_header(ini_file, "mycontainer")
 
         assert "volume" in result.remaining_options
         assert "nvidia" in result.remaining_options
@@ -242,13 +244,13 @@ class TestWriteConfigWithoutHeader:
         assert "nvidia=true" in content
 
 
-class TestParseConfigFile:
-    """Tests for parse_config_file function (in builder.py)."""
+class TestParseConfigWithoutHeader:
+    """Tests for parse_config_without_header function."""
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         """Should raise ValueError when file not found."""
         with pytest.raises(ValueError, match="not found"):
-            parse_config_file(tmp_path / "nonexistent.ini", "test")
+            parse_config_without_header(tmp_path / "nonexistent.ini", "test")
 
     def test_parse_basic_config(self, tmp_path: Path) -> None:
         """Should parse config without section header."""
@@ -256,7 +258,7 @@ class TestParseConfigFile:
         ini_file.write_text("""image=alpine:latest
 additional_packages=git curl
 """)
-        result = parse_config_file(ini_file, "mycontainer")
+        result = parse_config_without_header(ini_file, "mycontainer")
 
         assert result.name == "mycontainer"
         assert result.image == "alpine:latest"
@@ -269,7 +271,7 @@ additional_packages=git curl
 pre_init_hooks="echo pre1" "echo pre2"
 init_hooks="echo init"
 """)
-        result = parse_config_file(ini_file, "mycontainer")
+        result = parse_config_without_header(ini_file, "mycontainer")
 
         assert result.pre_init_hooks == ["echo pre1", "echo pre2"]
         assert result.init_hooks == ["echo init"]
@@ -281,7 +283,7 @@ init_hooks="echo init"
 volume=/home:/home
 nvidia=true
 """)
-        result = parse_config_file(ini_file, "mycontainer")
+        result = parse_config_without_header(ini_file, "mycontainer")
 
         assert "volume" in result.remaining_options
         assert "nvidia" in result.remaining_options
@@ -300,7 +302,7 @@ nvidia=true
         config_file = tmp_path / "config.ini"
         write_config_without_header(config_file, original)
 
-        parsed = parse_config_file(config_file, "test")
+        parsed = parse_config_without_header(config_file, "test")
 
         assert parsed.name == "test"
         assert parsed.image == "alpine:latest"

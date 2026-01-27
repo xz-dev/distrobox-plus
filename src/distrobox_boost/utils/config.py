@@ -23,17 +23,22 @@ def _ensure_dir(path: Path) -> Path:
 
 def get_config_dir(
     *,
+    ensure_exists: bool = False,
     _user_config_dir: Callable[..., str] = platformdirs.user_config_dir,
 ) -> Path:
     """Get the base configuration directory for distrobox-boost.
 
     Args:
+        ensure_exists: If True, create the directory if it doesn't exist.
         _user_config_dir: Function to get user config dir (for testing).
 
     Returns:
         Path to the config directory (e.g., ~/.config/distrobox-boost/).
     """
-    return Path(_user_config_dir(APP_NAME))
+    path = Path(_user_config_dir(APP_NAME))
+    if ensure_exists:
+        _ensure_dir(path)
+    return path
 
 
 def get_container_config_dir(
@@ -52,7 +57,7 @@ def get_container_config_dir(
     Returns:
         Path to the container config directory (e.g., ~/.config/distrobox-boost/mycontainer/).
     """
-    config_dir = get_config_dir(_user_config_dir=_user_config_dir)
+    config_dir = get_config_dir(ensure_exists=True, _user_config_dir=_user_config_dir)
     container_dir = config_dir / container_name
     return _ensure_dir(container_dir)
 
@@ -81,17 +86,22 @@ def get_container_config_file(
 
 def get_cache_dir(
     *,
+    ensure_exists: bool = False,
     _user_cache_dir: Callable[..., str] = platformdirs.user_cache_dir,
 ) -> Path:
     """Get the base cache directory for distrobox-boost.
 
     Args:
+        ensure_exists: If True, create the directory if it doesn't exist.
         _user_cache_dir: Function to get user cache dir (for testing).
 
     Returns:
         Path to the cache directory (e.g., ~/.cache/distrobox-boost/).
     """
-    return Path(_user_cache_dir(APP_NAME))
+    path = Path(_user_cache_dir(APP_NAME))
+    if ensure_exists:
+        _ensure_dir(path)
+    return path
 
 
 def get_container_cache_dir(
@@ -111,6 +121,6 @@ def get_container_cache_dir(
     Returns:
         Path to the container cache directory (e.g., ~/.cache/distrobox-boost/mycontainer/).
     """
-    cache_dir = get_cache_dir(_user_cache_dir=_user_cache_dir)
+    cache_dir = get_cache_dir(ensure_exists=True, _user_cache_dir=_user_cache_dir)
     container_dir = cache_dir / container_name
     return _ensure_dir(container_dir)

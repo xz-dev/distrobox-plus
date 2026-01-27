@@ -15,6 +15,28 @@ PreHook = Callable[[list[str]], list[str] | None]
 PostHook = Callable[[subprocess.CompletedProcess[bytes | str]], None]
 
 
+def _find_distrobox_command(command: str) -> list[str] | None:
+    """Find the distrobox command executable.
+
+    First tries distrobox-{command}, then falls back to distrobox {command}.
+
+    Args:
+        command: The distrobox subcommand (e.g., "create", "ephemeral").
+
+    Returns:
+        Command list to execute, or None if not found.
+    """
+    real_cmd = shutil.which(f"distrobox-{command}")
+    if real_cmd is not None:
+        return [real_cmd]
+
+    real_distrobox = shutil.which("distrobox")
+    if real_distrobox is not None:
+        return [real_distrobox, command]
+
+    return None
+
+
 def run_with_hooks(
     command: str,
     args: list[str],
@@ -50,16 +72,12 @@ def run_with_hooks(
             args = modified_args
 
     # 2. Find the real distrobox command
-    real_cmd = shutil.which(f"distrobox-{command}")
-    if real_cmd is None:
-        # Fall back to 'distrobox <command>'
-        real_distrobox = shutil.which("distrobox")
-        if real_distrobox is None:
-            print(f"Error: distrobox-{command} not found in PATH")
-            return 1
-        cmd = [real_distrobox, command, *args]
-    else:
-        cmd = [real_cmd, *args]
+    cmd_base = _find_distrobox_command(command)
+    if cmd_base is None:
+        print(f"Error: distrobox-{command} not found in PATH")
+        return 1
+
+    cmd = [*cmd_base, *args]
 
     # 3. Execute the command (with or without hijacking)
     if use_hijack:
@@ -87,15 +105,11 @@ def run_passthrough(command: str, args: list[str]) -> int:
     Returns:
         Exit code from distrobox.
     """
-    real_cmd = shutil.which(f"distrobox-{command}")
-    if real_cmd is None:
-        real_distrobox = shutil.which("distrobox")
-        if real_distrobox is None:
-            print(f"Error: distrobox not found in PATH")
-            return 1
-        cmd = [real_distrobox, command, *args]
-    else:
-        cmd = [real_cmd, *args]
+    cmd_base = _find_distrobox_command(command)
+    if cmd_base is None:
+        print(f"Error: distrobox not found in PATH")
+        return 1
 
+    cmd = [*cmd_base, *args]
     result = subprocess.run(cmd)
     return result.returncode

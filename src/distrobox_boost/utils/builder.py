@@ -4,12 +4,10 @@ Handles detection of when images need to be rebuilt and the actual
 image building process.
 """
 
-import configparser
 import subprocess
-from dataclasses import dataclass, field
-from pathlib import Path
 
 from distrobox_boost.utils.config import get_container_cache_dir, get_container_config_file
+from distrobox_boost.utils.parsing import ContainerConfig, parse_config_without_header
 from distrobox_boost.utils.templates import (
     generate_additional_packages_cmd,
     generate_hooks_cmd,
@@ -156,100 +154,6 @@ DISTROBOX_PACKAGES: dict[str, list[str]] = {
     ],
 }
 
-# Fields that are baked into the image (removed from optimized config)
-BAKED_FIELDS = {"image", "additional_packages", "pre_init_hooks", "init_hooks"}
-
-
-@dataclass
-class ContainerConfig:
-    """Parsed container configuration."""
-
-    name: str
-    image: str = ""
-    additional_packages: list[str] = field(default_factory=list)
-    pre_init_hooks: list[str] = field(default_factory=list)
-    init_hooks: list[str] = field(default_factory=list)
-    remaining_options: dict[str, list[str]] = field(default_factory=dict)
-
-
-def _parse_multiline_value(value: str) -> list[str]:
-    """Parse a multiline or space-separated value into a list.
-
-    Handles both:
-    - Space-separated: "git curl wget"
-    - Multiline with quotes: "first command" "second command"
-
-    Args:
-        value: Raw value string from INI file.
-
-    Returns:
-        List of individual items.
-    """
-    if not value or not value.strip():
-        return []
-
-    # Check if it contains quoted strings (multiline hooks style)
-    if '"' in value:
-        items = []
-        current = ""
-        in_quotes = False
-        for char in value:
-            if char == '"':
-                in_quotes = not in_quotes
-                if not in_quotes and current.strip():
-                    items.append(current.strip())
-                    current = ""
-            elif in_quotes:
-                current += char
-        return items
-
-    # Simple space-separated list
-    return value.split()
-
-
-def parse_config_file(file_path: Path, container_name: str) -> ContainerConfig:
-    """Parse config file without section header.
-
-    The container name is provided as an argument (from directory structure),
-    not read from the file content.
-
-    Args:
-        file_path: Path to the config file.
-        container_name: Name of the container (from directory structure).
-
-    Returns:
-        Parsed container configuration.
-
-    Raises:
-        ValueError: If file not found or can't be parsed.
-    """
-    if not file_path.exists():
-        raise ValueError(f"Config file not found: {file_path}")
-
-    # Read file and temporarily add section header for configparser
-    content = file_path.read_text()
-    temp_content = f"[{container_name}]\n{content}"
-
-    config = configparser.ConfigParser()
-    config.optionxform = str  # type: ignore[assignment]
-    config.read_string(temp_content)
-
-    section = config[container_name]
-
-    # Parse fields
-    result = ContainerConfig(name=container_name)
-    result.image = section.get("image", "").strip()
-    result.additional_packages = _parse_multiline_value(section.get("additional_packages", ""))
-    result.pre_init_hooks = _parse_multiline_value(section.get("pre_init_hooks", ""))
-    result.init_hooks = _parse_multiline_value(section.get("init_hooks", ""))
-
-    # Collect remaining options (not baked into image)
-    for key, value in section.items():
-        if key not in BAKED_FIELDS:
-            result.remaining_options[key] = [value] if value else []
-
-    return result
-
 
 def generate_containerfile(
     base_image: str,
@@ -336,7 +240,21 @@ def build_image(builder: str, name: str, containerfile_content: str) -> int:
         cmd = [builder, "build", "-t", name, "-f", "-", "."]
 
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, input=containerfile_content, text=True)
+    result = subprocess.run(
+        cmd,
+        input=containerfile_content,
+        text=True,
+        capture_output=True,
+    )
+
+    # Print stdout if any
+    if result.stdout:
+        print(result.stdout)
+
+    # Print stderr on failure for debugging
+    if result.returncode != 0 and result.stderr:
+        print(f"Build error:\n{result.stderr}")
+
     return result.returncode
 
 
@@ -429,7 +347,7 @@ def ensure_boost_image(name: str) -> int:
         return 0
 
     try:
-        config = parse_config_file(config_path, name)
+        config: ContainerConfig = parse_config_without_header(config_path, name)
     except ValueError as e:
         print(f"[distrobox-boost] Error parsing config: {e}")
         return 1
@@ -468,7 +386,7 @@ def ensure_boost_image(name: str) -> int:
     # Save Containerfile for debugging
     cache_dir = get_container_cache_dir(name)
     containerfile_path = cache_dir / "Containerfile"
-    containerfile_path.write_text(containerfile)
+    containerfile_path.write_text(containerfile, encoding="utf-8")
 
     # Build the image
     image_tag = get_boost_image_name(name)
