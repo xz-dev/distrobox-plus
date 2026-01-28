@@ -17,6 +17,7 @@ Choose one of the available commands:
     enter
     ephemeral
     export
+    generate-entry
     list | ls
     rm
     stop
@@ -66,6 +67,10 @@ def main(argv: list[str] | None = None) -> int:
 
         case "export":
             from .commands.export import run
+            return run(args)
+
+        case "generate-entry":
+            from .commands.generate_entry import run
             return run(args)
 
         case "list" | "ls":

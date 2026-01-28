@@ -454,6 +454,27 @@ def _export_binary(
         return 3
 
 
+def _iter_files_recursive(directory: Path):
+    """Recursively iterate over files and symlinks in a directory.
+
+    Matches original: find ... -type f -print -o -type l -print
+
+    Args:
+        directory: Directory to search
+
+    Yields:
+        Path objects for files and symlinks
+    """
+    try:
+        for item in directory.iterdir():
+            if item.is_file() or item.is_symlink():
+                yield item
+            elif item.is_dir():
+                yield from _iter_files_recursive(item)
+    except OSError:
+        pass
+
+
 def _find_desktop_files(exported_app: str, canon_dirs: list[str]) -> list[str]:
     """Find desktop files for the exported application.
 
@@ -489,11 +510,8 @@ def _find_desktop_files(exported_app: str, canon_dirs: list[str]) -> list[str]:
         if not Path(canon_dir).is_dir():
             continue
 
-        # Find all files and symlinks (matches: find ... -type f -print -o -type l -print)
-        for desktop_file in Path(canon_dir).iterdir():
-            if not (desktop_file.is_file() or desktop_file.is_symlink()):
-                continue
-
+        # Find all files and symlinks recursively (matches: find ... -type f -print -o -type l -print)
+        for desktop_file in _iter_files_recursive(Path(canon_dir)):
             try:
                 content = desktop_file.read_text()
                 # Check if it matches the exported app (by Exec or Name)
@@ -799,11 +817,8 @@ def _list_exported_applications(host_home: str, container_id: str) -> int:
     distrobox_enter_pattern = re.escape(distrobox_enter)
     exec_pattern = re.compile(f"Exec=.*({distrobox_enter_pattern}|distrobox.*enter).*")
 
-    # Find files and symlinks (matches: find ... -type f -print -o -type l -print)
-    for desktop_file in apps_dir.iterdir():
-        if not (desktop_file.is_file() or desktop_file.is_symlink()):
-            continue
-
+    # Find files and symlinks recursively (matches: find ... -type f -print -o -type l -print)
+    for desktop_file in _iter_files_recursive(apps_dir):
         try:
             content = desktop_file.read_text()
             # Check if it's a distrobox exported app (grep -l -e "Exec=...")
@@ -835,6 +850,7 @@ def _list_exported_binaries(dest_path: str, container_id: str) -> int:
     """List exported binaries from this container.
 
     Matches original shell script behavior:
+    - find ... -type f -print
     - grep -l -e "^# distrobox_binary"
     - name="$(grep -B1 "fi" "${i}" | grep exec | cut -d' ' -f2)"
     - grep "^# name:.*" | grep -q "${CONTAINER_ID}"
@@ -850,7 +866,9 @@ def _list_exported_binaries(dest_path: str, container_id: str) -> int:
     if not dest_dir.is_dir():
         return 0
 
-    for binary_file in dest_dir.iterdir():
+    # Find files recursively (matches: find ... -type f -print)
+    for binary_file in _iter_files_recursive(dest_dir):
+        # Only process regular files (original uses -type f, not -type l)
         if not binary_file.is_file():
             continue
 

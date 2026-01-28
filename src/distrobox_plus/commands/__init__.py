@@ -6,5 +6,6 @@ from .rm import run as rm
 from .create import run as create
 from .enter import run as enter
 from .export import run as export
+from .generate_entry import run as generate_entry
 
-__all__ = ["list_", "stop", "rm", "create", "enter", "export"]
+__all__ = ["list_", "stop", "rm", "create", "enter", "export", "generate_entry"]
