@@ -111,7 +111,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-ap", "--additional-packages",
-        help="Additional packages to install",
+        action="append",
+        default=[],
+        help="Additional packages to install (can be specified multiple times)",
     )
     parser.add_argument(
         "--init-hooks",
@@ -526,7 +528,7 @@ def run(args: list[str] | None = None) -> int:
     # Other options
     opts.additional_volumes = parsed.volume
     opts.additional_flags = parsed.additional_flags
-    opts.additional_packages = parsed.additional_packages or ""
+    opts.additional_packages = " ".join(parsed.additional_packages)
     opts.init_hooks = parsed.init_hooks or ""
     opts.pre_init_hooks = parsed.pre_init_hooks or ""
     opts.platform = parsed.platform or ""
