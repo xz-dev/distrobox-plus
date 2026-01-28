@@ -362,6 +362,11 @@ class ContainerManager:
         return result == "1" if isinstance(result, str) else False
 
     @property
+    def cmd_prefix(self) -> list[str]:
+        """Get the command prefix for display/dry-run purposes."""
+        return list(self._cmd_prefix)
+
+    @property
     def is_podman(self) -> bool:
         """Check if this is a podman-based manager."""
         return "podman" in self.name

@@ -13,6 +13,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.request import urlopen
+from urllib.error import URLError
+
+import platformdirs
 
 from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_doas, get_user_info
 from ..container import detect_container_manager
@@ -34,6 +38,75 @@ from ..utils import (
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
+
+
+def get_cache_dir() -> Path:
+    """Get the distrobox cache directory."""
+    return Path(platformdirs.user_cache_dir("distrobox"))
+
+
+def show_compatibility() -> int:
+    """Show list of compatible images, with local caching.
+
+    Returns:
+        Exit code (0 on success, 1 on failure)
+    """
+    cache_dir = get_cache_dir()
+    cache_file = cache_dir / f"distrobox-compatibility-{VERSION}"
+
+    # Try to use cached version
+    if cache_file.exists() and cache_file.stat().st_size > 0:
+        print(cache_file.read_text(), end="")
+        return 0
+
+    # Need to fetch from network
+    url = f"https://raw.githubusercontent.com/89luca89/distrobox/{VERSION}/docs/compatibility.md"
+
+    try:
+        # Check connectivity first
+        urlopen("https://github.com", timeout=5)
+    except URLError:
+        print("ERROR: no cache file and no connectivity found, cannot retrieve compatibility list.",
+              file=sys.stderr)
+        return 1
+
+    try:
+        with urlopen(url, timeout=30) as response:
+            content = response.read().decode("utf-8")
+    except URLError as e:
+        print(f"ERROR: failed to fetch compatibility list: {e}", file=sys.stderr)
+        return 1
+
+    # Parse the markdown table to extract image list
+    # Extract lines between | Alma... and | Void...
+    images: list[str] = []
+    in_table = False
+    for line in content.splitlines():
+        if line.startswith("| Alma"):
+            in_table = True
+        if in_table:
+            # Extract 4th column (image names)
+            parts = line.split("|")
+            if len(parts) >= 4:
+                image_cell = parts[3].strip()
+                # Split by <br> and clean up
+                for img in image_cell.replace("<br>", "\n").split("\n"):
+                    img = img.strip()
+                    if img:
+                        images.append(img)
+            if line.startswith("| Void"):
+                break
+
+    # Sort and deduplicate
+    images = sorted(set(images))
+    result = "\n".join(images) + "\n"
+
+    # Cache the result
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(result)
+
+    print(result, end="")
+    return 0
 
 
 @dataclass
@@ -172,17 +245,42 @@ def create_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"distrobox: {VERSION}",
     )
+    parser.add_argument(
+        "-C", "--compatibility",
+        action="store_true",
+        help="Show list of compatible images",
+    )
 
     # Unshare options
-    parser.add_argument("--unshare-ipc", action="store_true")
-    parser.add_argument("--unshare-groups", action="store_true")
-    parser.add_argument("--unshare-netns", action="store_true")
-    parser.add_argument("--unshare-process", action="store_true")
-    parser.add_argument("--unshare-devsys", action="store_true")
+    parser.add_argument(
+        "--unshare-ipc",
+        action="store_true",
+        help="Do not share ipc namespace with host",
+    )
+    parser.add_argument(
+        "--unshare-groups",
+        action="store_true",
+        help="Do not forward user's additional groups into the container",
+    )
+    parser.add_argument(
+        "--unshare-netns",
+        action="store_true",
+        help="Do not share the net namespace with host",
+    )
+    parser.add_argument(
+        "--unshare-process",
+        action="store_true",
+        help="Do not share process namespace with host",
+    )
+    parser.add_argument(
+        "--unshare-devsys",
+        action="store_true",
+        help="Do not share host devices and sysfs dirs from host",
+    )
     parser.add_argument(
         "--unshare-all",
         action="store_true",
-        help="Enable all unshare options",
+        help="Activate all the unshare flags",
     )
     parser.add_argument(
         "--absolutely-disable-root-password-i-am-really-positively-sure",
@@ -470,6 +568,10 @@ def run(args: list[str] | None = None) -> int:
     parser = create_parser()
     parsed = parser.parse_args(args)
 
+    # Handle --compatibility flag early
+    if parsed.compatibility:
+        return show_compatibility()
+
     # Load config
     config = Config.load()
 
@@ -574,7 +676,8 @@ def run(args: list[str] | None = None) -> int:
     # Dry run
     if opts.dryrun:
         cmd = generate_create_command(manager, opts, config)
-        print(" ".join(cmd))
+        full_cmd = manager.cmd_prefix + cmd
+        print(" ".join(full_cmd))
         return 0
 
     # Check if container already exists
