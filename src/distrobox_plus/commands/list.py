@@ -6,6 +6,7 @@ Lists all distrobox containers with their status.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -115,7 +116,7 @@ def print_containers(
 
         if use_color:
             # Running containers in green, others in yellow
-            if "Up" in status or "running" in status.lower():
+            if "up" in status.lower() or "running" in status.lower():
                 print(f"{GREEN}{line}{CLEAR}")
             else:
                 print(f"{YELLOW}{line}{CLEAR}")
@@ -134,14 +135,14 @@ def run(args: list[str] | None = None) -> int:
     """
     # Check for sudo/doas
     if check_sudo_doas():
+        prog = os.path.basename(sys.argv[0])
+        orig_args = " ".join(sys.argv[1:])
         print(
-            f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
+            f"Running {prog} via SUDO/DOAS is not supported. "
+            "Instead, please try running:",
             file=sys.stderr,
         )
-        print(
-            f"Instead, please try running:\n  {sys.argv[0]} --root",
-            file=sys.stderr,
-        )
+        print(f"  {prog} --root {orig_args}", file=sys.stderr)
         return 1
 
     # Parse arguments
