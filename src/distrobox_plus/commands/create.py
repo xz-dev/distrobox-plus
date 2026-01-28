@@ -32,6 +32,7 @@ from ..utils import (
     get_hostname,
     validate_hostname,
     prompt_yes_no,
+    InvalidInputError,
     get_script_path,
     mkdir_p,
     remove_trailing_slashes,
@@ -873,10 +874,15 @@ def _ensure_image(
 
     if not config.non_interactive and not opts.pull:
         print(f"Image {opts.image} not found.", file=sys.stderr)
-        if not prompt_yes_no("Do you want to pull the image now?"):
-            print(
-                f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
-            )
+        try:
+            if not prompt_yes_no("Do you want to pull the image now?"):
+                print(
+                    f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
+                )
+                return False
+        except InvalidInputError as e:
+            print(e, file=sys.stderr)
+            print("Exiting.", file=sys.stderr)
             return False
 
     if not manager.pull(opts.image, opts.platform or None):

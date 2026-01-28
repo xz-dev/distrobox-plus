@@ -15,56 +15,11 @@ from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
 from ..container import detect_container_manager
-from ..utils import get_script_path
+from ..utils import get_script_path, prompt_yes_no, InvalidInputError
 from .list import list_containers
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
-
-
-# Valid yes/no responses matching original distrobox
-VALID_YES = ("y", "Y", "Yes", "yes", "YES")
-VALID_NO = ("n", "N", "No", "no", "NO")
-
-
-def prompt_yes_no_strict(message: str, default: bool = True) -> bool | None:
-    """Prompt user for yes/no confirmation with strict validation.
-
-    Matches original distrobox behavior: invalid input returns None (caller should exit).
-
-    Args:
-        message: Prompt message
-        default: Default value if user presses enter
-
-    Returns:
-        True for yes, False for no, None for invalid input
-    """
-    default_str = "Y/n" if default else "y/N"
-    try:
-        response = input(f"{message} [{default_str}]: ").strip()
-    except EOFError:
-        return default
-
-    if not response:
-        return default
-
-    if response in VALID_YES:
-        return True
-    if response in VALID_NO:
-        return False
-
-    # Invalid input - return None so caller can exit
-    return None
-
-
-def handle_invalid_input() -> None:
-    """Print invalid input error and exit."""
-    print("Invalid input.", file=sys.stderr)
-    print(
-        "The available choices are: y,Y,Yes,yes,YES or n,N,No,no,NO.\nExiting.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -268,13 +223,11 @@ def delete_container(
     rm_home_local = False
     if container_home and container_home != host_home:
         if rm_home and not non_interactive:
-            response = prompt_yes_no_strict(
+            # InvalidInputError propagates to caller
+            rm_home_local = prompt_yes_no(
                 f"Do you want to remove custom home of container {name} ({container_home})?",
                 default=False,
             )
-            if response is None:
-                handle_invalid_input()
-            rm_home_local = response
         elif rm_home and non_interactive:
             # Original: if non_interactive, response_rm_home stays "N" (default)
             # so rm_home_local stays False
@@ -373,42 +326,41 @@ def run(args: list[str] | None = None) -> int:
     # Prompt for confirmation
     names_str = " ".join(container_names)
 
-    if not config.non_interactive and not force:
-        response = prompt_yes_no_strict(
-            f"Do you really want to delete containers:{names_str}?",
-            default=True,
-        )
-        if response is None:
-            handle_invalid_input()
-        if not response:
-            print("Aborted.")
-            return 0
-
-    # Delete containers, checking running status for each
-    for name in container_names:
-        container_force = force
-
-        # If container is running and not already forcing, ask for this specific container
-        if not config.non_interactive and not force and manager.is_running(name):
-            response_force = prompt_yes_no_strict(
-                f"Container {name} running, do you want to force delete them?",
+    try:
+        if not config.non_interactive and not force:
+            if not prompt_yes_no(
+                f"Do you really want to delete containers:{names_str}?",
                 default=True,
-            )
-            if response_force is None:
-                handle_invalid_input()
-            if not response_force:
-                print(f"Skipping {name}.")
-                continue
-            container_force = True
+            ):
+                print("Aborted.")
+                return 0
 
-        delete_container(
-            manager,
-            name,
-            force=container_force,
-            rm_home=config.container_rm_custom_home,
-            non_interactive=config.non_interactive,
-            verbose=config.verbose,
-        )
+        # Delete containers, checking running status for each
+        for name in container_names:
+            container_force = force
+
+            # If container is running and not already forcing, ask for this specific container
+            if not config.non_interactive and not force and manager.is_running(name):
+                if not prompt_yes_no(
+                    f"Container {name} running, do you want to force delete them?",
+                    default=True,
+                ):
+                    print(f"Skipping {name}.")
+                    continue
+                container_force = True
+
+            delete_container(
+                manager,
+                name,
+                force=container_force,
+                rm_home=config.container_rm_custom_home,
+                non_interactive=config.non_interactive,
+                verbose=config.verbose,
+            )
+    except InvalidInputError as e:
+        print(e, file=sys.stderr)
+        print("Exiting.", file=sys.stderr)
+        return 1
 
     return 0
 

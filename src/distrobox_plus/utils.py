@@ -19,6 +19,12 @@ RED = "\033[31m"
 CLEAR = "\033[0m"
 
 
+class InvalidInputError(Exception):
+    """Raised when user provides invalid input to a prompt."""
+
+    pass
+
+
 def is_tty() -> bool:
     """Check if stdin and stdout are connected to a TTY."""
     return sys.stdin.isatty() and sys.stdout.isatty()
@@ -94,6 +100,9 @@ def prompt_yes_no(
 
     Returns:
         True for yes, False for no
+
+    Raises:
+        InvalidInputError: If user provides invalid input
     """
     if non_interactive:
         return True
@@ -112,9 +121,11 @@ def prompt_yes_no(
     if response in ("n", "no"):
         return False
 
-    # Invalid input
-    print("Invalid input. Please enter y/yes or n/no.", file=sys.stderr)
-    return prompt_yes_no(message, default, non_interactive)
+    # Invalid input - raise exception like original shell script
+    raise InvalidInputError(
+        "Invalid input.\n"
+        "The available choices are: y,Y,Yes,yes,YES or n,N,No,no,NO."
+    )
 
 
 def get_script_path(script_name: str) -> Path | None:

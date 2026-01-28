@@ -18,6 +18,7 @@ from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_do
 from ..container import detect_container_manager
 from ..utils import (
     prompt_yes_no,
+    InvalidInputError,
     is_tty,
     filter_env_for_container,
     build_container_path,
@@ -386,10 +387,15 @@ def run(args: list[str] | None = None) -> int:
     # Container doesn't exist - offer to create it
     if status is None:
         if not config.non_interactive:
-            if not prompt_yes_no(f"Create it now, out of image {DEFAULT_IMAGE}?"):
-                print("For creating it, run:", file=sys.stderr)
-                print("\tdistrobox create <name> --image <image>", file=sys.stderr)
-                return 0
+            try:
+                if not prompt_yes_no(f"Create it now, out of image {DEFAULT_IMAGE}?"):
+                    print("For creating it, run:", file=sys.stderr)
+                    print("\tdistrobox create <name> --image <image>", file=sys.stderr)
+                    return 0
+            except InvalidInputError as e:
+                print(e, file=sys.stderr)
+                print("Exiting.", file=sys.stderr)
+                return 1
 
         # Create the container
         create_cmd = ["distrobox-create", "--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
