@@ -12,11 +12,16 @@ wheels = [
 ]
 
 [[package]]
-name = "distrobox-boost"
+name = "distrobox-plus"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "platformdirs" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.dev-dependencies]
@@ -25,10 +30,14 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "platformdirs", specifier = ">=4.0.0" }]
+requires-dist = [
+    { name = "platformdirs", specifier = ">=4.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0.0" }]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
 
 [[package]]
 name = "iniconfig"

@@ -7,7 +7,9 @@ authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "platformdirs>=4.0.0",
+]
 
 [project.scripts]
 distrobox-plus = "distrobox_plus:main"
@@ -35,3 +37,8 @@ markers = [
 ]
 # Skip slow tests by default
 addopts = "-m 'not slow'"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

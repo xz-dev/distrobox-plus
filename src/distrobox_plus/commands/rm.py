@@ -1,0 +1,360 @@
+"""distrobox-rm command implementation.
+
+Removes one or more distrobox containers and cleans up exports.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..container import detect_container_manager
+from ..utils import prompt_yes_no, get_script_path
+from .list import list_containers
+
+if TYPE_CHECKING:
+    from ..container import ContainerManager
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create argument parser for distrobox-rm."""
+    parser = argparse.ArgumentParser(
+        prog="distrobox-rm",
+        description="Remove distrobox containers",
+    )
+    parser.add_argument(
+        "containers",
+        nargs="*",
+        help="Container name(s) to remove",
+    )
+    parser.add_argument(
+        "-a", "--all",
+        action="store_true",
+        help="Delete all distroboxes",
+    )
+    parser.add_argument(
+        "-f", "--force",
+        action="store_true",
+        help="Force deletion (implies --yes)",
+    )
+    parser.add_argument(
+        "--rm-home",
+        action="store_true",
+        help="Remove the mounted home if it differs from host user's one",
+    )
+    parser.add_argument(
+        "-Y", "--yes",
+        action="store_true",
+        help="Non-interactive, delete without asking",
+    )
+    parser.add_argument(
+        "-r", "--root",
+        action="store_true",
+        help="Launch container manager with root privileges",
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show more verbosity",
+    )
+    parser.add_argument(
+        "-V", "--version",
+        action="version",
+        version=f"distrobox: {VERSION}",
+    )
+    return parser
+
+
+def get_all_distrobox_names(manager: ContainerManager) -> list[str]:
+    """Get names of all distrobox containers.
+
+    Args:
+        manager: Container manager
+
+    Returns:
+        List of container names
+    """
+    containers = list_containers(manager)
+    return [c["name"] for c in containers]
+
+
+def cleanup_exported_binaries(container_name: str) -> None:
+    """Remove exported binaries for a container.
+
+    Args:
+        container_name: Name of the container
+    """
+    bin_dir = Path.home() / ".local" / "bin"
+    if not bin_dir.exists():
+        return
+
+    print("Removing exported binaries...")
+
+    for binary in bin_dir.iterdir():
+        if not binary.is_file():
+            continue
+
+        try:
+            content = binary.read_text()
+            # Check if this binary was exported by distrobox for this container
+            if "# distrobox_binary" in content and f"# name: {container_name}" in content:
+                print(f"Removing exported binary {binary}...")
+                binary.unlink()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+
+def cleanup_exported_apps(container_name: str) -> None:
+    """Remove exported desktop applications for a container.
+
+    Args:
+        container_name: Name of the container
+    """
+    apps_dir = Path.home() / ".local" / "share" / "applications"
+    icons_dir = Path.home() / ".local" / "share" / "icons"
+
+    if not apps_dir.exists():
+        return
+
+    # Find desktop files that match the container
+    pattern = f"{container_name}*"
+    for desktop_file in apps_dir.glob(pattern):
+        if not desktop_file.is_file() and not desktop_file.is_symlink():
+            continue
+
+        try:
+            content = desktop_file.read_text()
+            # Verify this is for our container
+            if f"Exec=.*{container_name} " not in content and container_name not in desktop_file.name:
+                continue
+
+            # Extract app name and icon
+            app_name = None
+            icon_name = None
+
+            for line in content.splitlines():
+                if line.startswith("Name="):
+                    app_name = line.split("=", 1)[1]
+                elif line.startswith("Icon="):
+                    icon_name = line.split("=", 1)[1]
+
+            if app_name:
+                print(f"Removing exported app {app_name}...")
+
+            desktop_file.unlink()
+
+            # Remove associated icons
+            if icon_name and icons_dir.exists():
+                # Get basename of icon in case it's a full path
+                icon_basename = Path(icon_name).stem
+                if icon_basename:
+                    for icon_file in icons_dir.rglob(f"{icon_basename}.*"):
+                        icon_file.unlink()
+
+        except (OSError, UnicodeDecodeError):
+            continue
+
+
+def run_generate_entry_delete(container_name: str, verbose: bool = False) -> None:
+    """Run distrobox-generate-entry --delete for a container.
+
+    Args:
+        container_name: Name of the container
+        verbose: Enable verbose output
+    """
+    script = get_script_path("distrobox-generate-entry")
+    if not script:
+        return
+
+    cmd = [str(script), container_name, "--delete"]
+    if verbose:
+        cmd.append("--verbose")
+
+    try:
+        subprocess.run(cmd, capture_output=True)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def delete_container(
+    manager: ContainerManager,
+    name: str,
+    force: bool = False,
+    rm_home: bool = False,
+    non_interactive: bool = False,
+    verbose: bool = False,
+) -> bool:
+    """Delete a single container and clean up exports.
+
+    Args:
+        manager: Container manager
+        name: Container name
+        force: Force deletion
+        rm_home: Remove custom home directory
+        non_interactive: Skip prompts
+        verbose: Enable verbose output
+
+    Returns:
+        True if successful
+    """
+    _, host_home, _ = get_user_info()
+
+    # Check if container exists
+    status = manager.get_status(name)
+    if status is None:
+        # Match original distrobox behavior: print warning but don't fail
+        print(f"Cannot find container {name}.", file=sys.stderr)
+        return True
+
+    # Get container's home directory
+    container_home = manager.get_container_home(name)
+
+    # If container has custom home, prompt for deletion
+    rm_home_local = False
+    if container_home and container_home != host_home:
+        if rm_home and not non_interactive:
+            if prompt_yes_no(
+                f"Do you want to remove custom home of container {name} ({container_home})?",
+                default=False,
+            ):
+                rm_home_local = True
+        elif rm_home:
+            rm_home_local = True
+
+    # Remove the container
+    print("Removing container...")
+    if not manager.rm(name, force=force, volumes=True):
+        print(f"Failed to remove container {name}", file=sys.stderr)
+        return False
+
+    # Clean up exports
+    cleanup_exported_binaries(name)
+    cleanup_exported_apps(name)
+
+    # Delete the desktop entry
+    run_generate_entry_delete(name, verbose)
+
+    # Remove custom home if requested
+    if rm_home_local and container_home:
+        try:
+            shutil.rmtree(container_home)
+            print(f"Successfully removed {container_home}")
+        except OSError as e:
+            print(f"Failed to remove {container_home}: {e}", file=sys.stderr)
+
+    return True
+
+
+def run(args: list[str] | None = None) -> int:
+    """Run the distrobox-rm command.
+
+    Args:
+        args: Command line arguments (uses sys.argv if None)
+
+    Returns:
+        Exit code
+    """
+    # Check for sudo/doas
+    if check_sudo_doas():
+        print(
+            f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
+            file=sys.stderr,
+        )
+        print(
+            f"Instead, please try running:\n  {sys.argv[0]} --root",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Parse arguments
+    parser = create_parser()
+    parsed = parser.parse_args(args)
+
+    # Load config
+    config = Config.load()
+
+    # Apply command line overrides
+    if parsed.root:
+        config.rootful = True
+    if parsed.verbose:
+        config.verbose = True
+    if parsed.yes or parsed.force:
+        config.non_interactive = True
+    if parsed.rm_home:
+        config.container_rm_custom_home = True
+
+    force = parsed.force
+
+    # Detect container manager
+    manager = detect_container_manager(
+        preferred=config.container_manager,
+        verbose=config.verbose,
+        rootful=config.rootful,
+        sudo_program=config.sudo_program,
+    )
+
+    # Determine which containers to remove
+    container_names: list[str] = []
+
+    if parsed.all:
+        container_names = get_all_distrobox_names(manager)
+        if not container_names:
+            print("No containers found.", file=sys.stderr)
+            return 0
+    elif parsed.containers:
+        container_names = parsed.containers
+    else:
+        # Use default name
+        container_names = [DEFAULT_NAME]
+
+    # Check if any containers are running and prompt for force
+    if not config.non_interactive and not force:
+        running = []
+        for name in container_names:
+            if manager.is_running(name):
+                running.append(name)
+
+        if running:
+            names_str = " ".join(running)
+            if prompt_yes_no(
+                f"Container(s) {names_str} running, do you want to force delete them?",
+            ):
+                force = True
+            else:
+                print("Aborted.")
+                return 0
+
+    # Prompt for confirmation
+    names_str = " ".join(container_names)
+    if not config.non_interactive:
+        if not prompt_yes_no(f"Do you really want to delete containers: {names_str}?"):
+            print("Aborted.")
+            return 0
+
+    # Delete containers
+    exit_code = 0
+    for name in container_names:
+        if delete_container(
+            manager,
+            name,
+            force=force,
+            rm_home=config.container_rm_custom_home,
+            non_interactive=config.non_interactive,
+            verbose=config.verbose,
+        ):
+            print(f"Deleted {name}")
+        else:
+            exit_code = 1
+
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(run())
