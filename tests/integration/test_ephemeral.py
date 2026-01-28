@@ -19,8 +19,8 @@ class TestEphemeralNameGeneration:
         """Test that generated names match expected format."""
         name = generate_ephemeral_name()
 
-        # Should match distrobox-XXXXXXXXXX pattern
-        assert re.match(r"^distrobox-[a-z0-9]{10}$", name)
+        # Should match distrobox-XXXXXXXXXX pattern (mktemp uses [A-Za-z0-9])
+        assert re.match(r"^distrobox-[A-Za-z0-9]{10}$", name)
 
     @pytest.mark.fast
     def test_generate_ephemeral_name_unique(self):
