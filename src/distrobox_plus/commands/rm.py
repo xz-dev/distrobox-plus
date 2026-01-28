@@ -391,7 +391,7 @@ def run(args: list[str] | None = None) -> int:
         # If container is running and not already forcing, ask for this specific container
         if not config.non_interactive and not force and manager.is_running(name):
             response_force = prompt_yes_no_strict(
-                f"Container {name} is running, force delete?",
+                f"Container {name} running, do you want to force delete them?",
                 default=True,
             )
             if response_force is None:
