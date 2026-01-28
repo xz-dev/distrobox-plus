@@ -387,44 +387,10 @@ def get_clone_image(manager: ContainerManager, clone_name: str) -> str | None:
     return commit_tag
 
 
-def generate_create_command(
-    manager: ContainerManager,
-    opts: CreateOptions,
-    config: Config,
-) -> list[str]:
-    """Generate the container create command.
-
-    Args:
-        manager: Container manager
-        opts: Create options
-        config: Configuration
-
-    Returns:
-        List of command arguments
-    """
-    user, home, shell = get_user_info()
-    uid = os.getuid()
-    gid = os.getgid()
-
-    # Get script paths
-    entrypoint_path = get_script_path("distrobox-init")
-    export_path = get_script_path("distrobox-export")
-    hostexec_path = get_script_path("distrobox-host-exec")
-
-    if not entrypoint_path or not export_path:
-        print("Error: distrobox-init or distrobox-export not found", file=sys.stderr)
-        sys.exit(127)
-
-    # Determine container home
-    container_home = opts.custom_home or home
-
-    cmd = ["create"]
-
-    # Platform
+def _add_basic_settings(cmd: list[str], opts: CreateOptions) -> None:
+    """Add basic container settings (platform, hostname, name, privileged)."""
     if opts.platform:
         cmd.append(f"--platform={opts.platform}")
-
-    # Basic container settings
     cmd.extend(
         [
             f"--hostname={opts.hostname}",
@@ -437,7 +403,9 @@ def generate_create_command(
         ]
     )
 
-    # Namespace sharing
+
+def _add_namespace_options(cmd: list[str], opts: CreateOptions) -> None:
+    """Add namespace sharing options (ipc, network, pid)."""
     if not opts.unshare_ipc:
         cmd.append("--ipc=host")
     if not opts.unshare_netns:
@@ -445,20 +413,42 @@ def generate_create_command(
     if not opts.unshare_process:
         cmd.append("--pid=host")
 
-    # Labels and environment
+
+def _add_environment_vars(
+    cmd: list[str],
+    opts: CreateOptions,
+    manager_name: str,
+    shell: str,
+    container_home: str,
+) -> None:
+    """Add environment variables and labels."""
     cmd.extend(
         [
             "--label=manager=distrobox",
             f"--label=distrobox.unshare_groups={1 if opts.unshare_groups else 0}",
             f"--env=SHELL={Path(shell).name}",
             f"--env=HOME={container_home}",
-            f"--env=container={manager.name}",
+            f"--env=container={manager_name}",
             "--env=TERMINFO_DIRS=/usr/share/terminfo:/run/host/usr/share/terminfo",
             f"--env=CONTAINER_ID={opts.name}",
         ]
     )
 
-    # Volume mounts
+
+def _add_distrobox_volumes(cmd: list[str], home: str) -> tuple[Path | None, Path | None, Path | None]:
+    """Add distrobox script volumes.
+
+    Returns:
+        Tuple of (entrypoint_path, export_path, hostexec_path)
+    """
+    entrypoint_path = get_script_path("distrobox-init")
+    export_path = get_script_path("distrobox-export")
+    hostexec_path = get_script_path("distrobox-host-exec")
+
+    if not entrypoint_path or not export_path:
+        print("Error: distrobox-init or distrobox-export not found", file=sys.stderr)
+        sys.exit(127)
+
     cmd.append("--volume=/tmp:/tmp:rslave")
     cmd.append(f"--volume={entrypoint_path}:/usr/bin/entrypoint:ro")
     cmd.append(f"--volume={export_path}:/usr/bin/distrobox-export:ro")
@@ -466,7 +456,11 @@ def generate_create_command(
         cmd.append(f"--volume={hostexec_path}:/usr/bin/distrobox-host-exec:ro")
     cmd.append(f"--volume={home}:{home}:rslave")
 
-    # Handle root filesystem mounting based on podman+runc
+    return entrypoint_path, export_path, hostexec_path
+
+
+def _add_rootfs_mounts(cmd: list[str], manager: ContainerManager) -> None:
+    """Add root filesystem mounts (/:/run/host or per-directory for podman+runc)."""
     if manager.is_podman and manager.uses_runc():
         # Mount directories one by one for podman+runc compatibility
         ro_mounts = find_ro_mountpoints()
@@ -480,12 +474,16 @@ def generate_create_command(
     else:
         cmd.append("--volume=/:/run/host/:rslave")
 
-    # Device and sysfs mounts
+
+def _add_device_mounts(cmd: list[str], opts: CreateOptions) -> None:
+    """Add /dev and /sys mounts."""
     if not opts.unshare_devsys:
         cmd.append("--volume=/dev:/dev:rslave")
         cmd.append("--volume=/sys:/sys:rslave")
 
-    # Init system support
+
+def _add_init_mounts(cmd: list[str], opts: CreateOptions, manager: ContainerManager) -> None:
+    """Add init system support mounts (tmpfs for /run, /run/lock, etc)."""
     if opts.init and manager.is_docker:
         cmd.append("--cgroupns=host")
     if opts.init and not manager.is_podman:
@@ -498,6 +496,9 @@ def generate_create_command(
             ]
         )
 
+
+def _add_special_mounts(cmd: list[str], opts: CreateOptions) -> None:
+    """Add special mounts: devpts, SELinux, journal, /dev/shm symlink."""
     # devpts handling
     if not opts.unshare_devsys:
         cmd.append("--volume=/dev/pts")
@@ -515,7 +516,9 @@ def generate_create_command(
         real_shm = get_real_path("/dev/shm")
         cmd.append(f"--volume={real_shm}:{real_shm}")
 
-    # RHEL subscription files
+
+def _add_rhel_mounts(cmd: list[str]) -> None:
+    """Add RHEL subscription file mounts."""
     rhel_files = [
         ("/etc/pki/entitlement/", "/run/secrets/etc-pki-entitlement", "ro"),
         ("/etc/rhsm/", "/run/secrets/rhsm", "ro"),
@@ -525,6 +528,15 @@ def generate_create_command(
         if file_exists(src):
             cmd.append(f"--volume={src}:{dst}:{mode}")
 
+
+def _add_home_mounts(
+    cmd: list[str],
+    opts: CreateOptions,
+    user: str,
+    home: str,
+    uid: int,
+) -> None:
+    """Add custom home, /var/home, and XDG_RUNTIME_DIR mounts."""
     # Custom home handling
     if opts.custom_home:
         if not Path(opts.custom_home).exists():
@@ -546,7 +558,9 @@ def generate_create_command(
         if Path(runtime_dir).is_dir():
             cmd.append(f"--volume={runtime_dir}:{runtime_dir}:rslave")
 
-    # Network config files
+
+def _add_network_mounts(cmd: list[str], opts: CreateOptions) -> None:
+    """Add network config file mounts (/etc/hosts, resolv.conf, hostname)."""
     if not opts.unshare_netns:
         for net_file in ["/etc/hosts", "/etc/resolv.conf"]:
             if file_exists(net_file):
@@ -555,25 +569,37 @@ def generate_create_command(
         if opts.hostname == get_hostname() and file_exists("/etc/hostname"):
             cmd.append("--volume=/etc/hostname:/etc/hostname:ro")
 
-    # Podman-specific options
-    if manager.is_podman:
-        if manager.has_crun():
-            cmd.append("--runtime=crun")
-        cmd.extend(
-            [
-                "--annotation=run.oci.keep_original_groups=1",
-                "--ulimit=host",
-            ]
-        )
-        if opts.init:
-            cmd.append("--systemd=always")
-        if not config.rootful:
-            userns = "--userns=keep-id"
-            # Check for keep-id:size support
-            if not config.userns_nolimit and manager.supports_keepid_size(opts.image):
-                userns += ":size=65536"
-            cmd.append(userns)
 
+def _add_podman_options(
+    cmd: list[str],
+    opts: CreateOptions,
+    config: Config,
+    manager: ContainerManager,
+) -> None:
+    """Add Podman-specific options (runtime, userns, systemd, etc)."""
+    if not manager.is_podman:
+        return
+
+    if manager.has_crun():
+        cmd.append("--runtime=crun")
+    cmd.extend(
+        [
+            "--annotation=run.oci.keep_original_groups=1",
+            "--ulimit=host",
+        ]
+    )
+    if opts.init:
+        cmd.append("--systemd=always")
+    if not config.rootful:
+        userns = "--userns=keep-id"
+        # Check for keep-id:size support
+        if not config.userns_nolimit and manager.supports_keepid_size(opts.image):
+            userns += ":size=65536"
+        cmd.append(userns)
+
+
+def _add_additional_options(cmd: list[str], opts: CreateOptions) -> None:
+    """Add additional volumes, flags, and nopasswd option."""
     # nopasswd flag
     if opts.nopasswd:
         cmd.append("--volume=/dev/null:/run/.nopasswd:ro")
@@ -586,7 +612,16 @@ def generate_create_command(
     for flag in opts.additional_flags:
         cmd.append(flag)
 
-    # Entrypoint and image
+
+def _add_entrypoint_args(
+    cmd: list[str],
+    opts: CreateOptions,
+    user: str,
+    uid: int,
+    gid: int,
+    home: str,
+) -> None:
+    """Add entrypoint and its arguments."""
     cmd.append("--entrypoint=/usr/bin/entrypoint")
     cmd.append(opts.image)
 
@@ -615,42 +650,62 @@ def generate_create_command(
         ]
     )
 
+
+def generate_create_command(
+    manager: ContainerManager,
+    opts: CreateOptions,
+    config: Config,
+) -> list[str]:
+    """Generate the container create command.
+
+    Args:
+        manager: Container manager
+        opts: Create options
+        config: Configuration
+
+    Returns:
+        List of command arguments
+    """
+    user, home, shell = get_user_info()
+    uid = os.getuid()
+    gid = os.getgid()
+    container_home = opts.custom_home or home
+
+    cmd = ["create"]
+
+    _add_basic_settings(cmd, opts)
+    _add_namespace_options(cmd, opts)
+    _add_environment_vars(cmd, opts, manager.name, shell, container_home)
+    _add_distrobox_volumes(cmd, home)
+    _add_rootfs_mounts(cmd, manager)
+    _add_device_mounts(cmd, opts)
+    _add_init_mounts(cmd, opts, manager)
+    _add_special_mounts(cmd, opts)
+    _add_rhel_mounts(cmd)
+    _add_home_mounts(cmd, opts, user, home, uid)
+    _add_network_mounts(cmd, opts)
+    _add_podman_options(cmd, opts, config, manager)
+    _add_additional_options(cmd, opts)
+    _add_entrypoint_args(cmd, opts, user, uid, gid, home)
+
     return cmd
 
 
-def run(args: list[str] | None = None) -> int:
-    """Run the distrobox-create command.
+def _print_sudo_error() -> int:
+    """Print error message when running via sudo/doas."""
+    print(
+        f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
+        file=sys.stderr,
+    )
+    print(
+        f"Instead, please try running:\n  {sys.argv[0]} --root",
+        file=sys.stderr,
+    )
+    return 1
 
-    Args:
-        args: Command line arguments (uses sys.argv if None)
 
-    Returns:
-        Exit code
-    """
-    # Check for sudo/doas
-    if check_sudo_doas():
-        print(
-            f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
-            file=sys.stderr,
-        )
-        print(
-            f"Instead, please try running:\n  {sys.argv[0]} --root",
-            file=sys.stderr,
-        )
-        return 1
-
-    # Parse arguments
-    parser = create_parser()
-    parsed = parser.parse_args(args)
-
-    # Handle --compatibility flag early
-    if parsed.compatibility:
-        return show_compatibility()
-
-    # Load config
-    config = Config.load()
-
-    # Apply command line overrides
+def _apply_cli_overrides(config: Config, parsed: argparse.Namespace) -> None:
+    """Apply command line overrides to config."""
     if parsed.root:
         config.rootful = True
     if parsed.verbose:
@@ -658,68 +713,71 @@ def run(args: list[str] | None = None) -> int:
     if parsed.yes or parsed.pull:
         config.non_interactive = True
 
-    # Build create options
-    opts = CreateOptions()
 
-    # Handle image/name from various sources
-    opts.clone = parsed.clone or ""
-
+def _resolve_image(parsed: argparse.Namespace, config: Config, clone: str) -> str:
+    """Resolve the container image from parsed args and config."""
     if parsed.image:
-        opts.image = parsed.image
-    elif config.container_image:
-        opts.image = config.container_image
-    elif not opts.clone:
-        opts.image = DEFAULT_IMAGE
+        return parsed.image
+    if config.container_image:
+        return config.container_image
+    if not clone:
+        return DEFAULT_IMAGE
+    return ""
 
-    # Name handling
+
+def _resolve_name(parsed: argparse.Namespace, config: Config, image: str) -> str:
+    """Resolve the container name from parsed args and config."""
     if parsed.name:
-        opts.name = parsed.name
-    elif parsed.name_positional:
-        opts.name = parsed.name_positional
-    elif config.container_name:
-        opts.name = config.container_name
-    elif opts.image == DEFAULT_IMAGE:
-        opts.name = DEFAULT_NAME
-    elif opts.image:
-        opts.name = derive_container_name(opts.image)
+        return parsed.name
+    if parsed.name_positional:
+        return parsed.name_positional
+    if config.container_name:
+        return config.container_name
+    if image == DEFAULT_IMAGE:
+        return DEFAULT_NAME
+    if image:
+        return derive_container_name(image)
+    return ""
 
-    # Hostname
-    opts.hostname = parsed.hostname or config.container_hostname or get_hostname()
+
+def _resolve_hostname(
+    parsed: argparse.Namespace,
+    config: Config,
+    name: str,
+) -> str | None:
+    """Resolve and validate hostname. Returns None on validation failure."""
+    hostname = parsed.hostname or config.container_hostname or get_hostname()
     if parsed.unshare_netns:
-        opts.hostname = f"{opts.name}.{opts.hostname}"
+        hostname = f"{name}.{hostname}"
 
-    # Validate hostname
-    if not validate_hostname(opts.hostname):
+    if not validate_hostname(hostname):
         print(
-            f"Error: Invalid hostname '{opts.hostname}', longer than 64 characters",
+            f"Error: Invalid hostname '{hostname}', longer than 64 characters",
             file=sys.stderr,
         )
         print("Use --hostname argument to set it manually", file=sys.stderr)
-        return 1
+        return None
 
-    # Custom home
+    return hostname
+
+
+def _resolve_custom_home(
+    parsed: argparse.Namespace,
+    config: Config,
+    name: str,
+) -> str:
+    """Resolve custom home directory from parsed args and config."""
     if parsed.home:
-        opts.custom_home = remove_trailing_slashes(parsed.home)
-    elif config.container_custom_home:
-        opts.custom_home = config.container_custom_home
-    elif config.container_home_prefix:
-        opts.custom_home = f"{config.container_home_prefix}/{opts.name}"
+        return remove_trailing_slashes(parsed.home)
+    if config.container_custom_home:
+        return config.container_custom_home
+    if config.container_home_prefix:
+        return f"{config.container_home_prefix}/{name}"
+    return ""
 
-    # Other options
-    opts.additional_volumes = parsed.volume
-    opts.additional_flags = parsed.additional_flags
-    opts.additional_packages = " ".join(parsed.additional_packages)
-    opts.init_hooks = parsed.init_hooks or ""
-    opts.pre_init_hooks = parsed.pre_init_hooks or ""
-    opts.platform = parsed.platform or ""
-    opts.pull = parsed.pull or config.container_always_pull
-    opts.init = parsed.init
-    opts.nvidia = parsed.nvidia
-    opts.nopasswd = parsed.nopasswd
-    opts.no_entry = parsed.no_entry or not config.container_generate_entry
-    opts.dryrun = parsed.dry_run
 
-    # Unshare options
+def _set_unshare_options(opts: CreateOptions, parsed: argparse.Namespace) -> None:
+    """Set unshare options based on parsed arguments."""
     if parsed.unshare_all:
         opts.unshare_ipc = True
         opts.unshare_groups = True
@@ -733,58 +791,111 @@ def run(args: list[str] | None = None) -> int:
         opts.unshare_process = parsed.unshare_process or parsed.init
         opts.unshare_devsys = parsed.unshare_devsys
 
-    # Detect container manager
-    manager = detect_container_manager(
-        preferred=config.container_manager,
-        verbose=config.verbose,
-        rootful=config.rootful,
-        sudo_program=config.sudo_program,
-    )
 
-    # Handle clone
-    if opts.clone:
-        if not manager.is_podman and not manager.is_docker:
+def _build_create_options(
+    parsed: argparse.Namespace,
+    config: Config,
+) -> CreateOptions | None:
+    """Build CreateOptions from parsed arguments and config.
+
+    Returns:
+        CreateOptions if successful, None if validation failed
+    """
+    opts = CreateOptions()
+    opts.clone = parsed.clone or ""
+    opts.image = _resolve_image(parsed, config, opts.clone)
+    opts.name = _resolve_name(parsed, config, opts.image)
+
+    hostname = _resolve_hostname(parsed, config, opts.name)
+    if hostname is None:
+        return None
+    opts.hostname = hostname
+
+    opts.custom_home = _resolve_custom_home(parsed, config, opts.name)
+
+    # Direct assignments
+    opts.additional_volumes = parsed.volume
+    opts.additional_flags = parsed.additional_flags
+    opts.additional_packages = " ".join(parsed.additional_packages)
+    opts.init_hooks = parsed.init_hooks or ""
+    opts.pre_init_hooks = parsed.pre_init_hooks or ""
+    opts.platform = parsed.platform or ""
+    opts.pull = parsed.pull or config.container_always_pull
+    opts.init = parsed.init
+    opts.nvidia = parsed.nvidia
+    opts.nopasswd = parsed.nopasswd
+    opts.no_entry = parsed.no_entry or not config.container_generate_entry
+    opts.dryrun = parsed.dry_run
+
+    _set_unshare_options(opts, parsed)
+
+    return opts
+
+
+def _handle_clone(
+    manager: ContainerManager,
+    opts: CreateOptions,
+) -> str | None:
+    """Handle clone logic.
+
+    Returns:
+        Clone image name if successful, None if failed
+    """
+    if not manager.is_podman and not manager.is_docker:
+        print(
+            "Error: clone is only supported with docker and podman", file=sys.stderr
+        )
+        return None
+    return get_clone_image(manager, opts.clone)
+
+
+def _print_enter_hint(name: str, rootful: bool) -> None:
+    """Print hint message for entering the container."""
+    print("To enter, run:\n")
+    if rootful and os.getuid() != 0:
+        print(f"distrobox enter --root {name}\n")
+    else:
+        print(f"distrobox enter {name}\n")
+
+
+def _ensure_image(
+    manager: ContainerManager,
+    opts: CreateOptions,
+    config: Config,
+) -> bool:
+    """Ensure image exists, pulling if necessary.
+
+    Returns:
+        True on success, False on failure
+    """
+    if not opts.pull and manager.image_exists(opts.image):
+        return True
+
+    if not config.non_interactive and not opts.pull:
+        print(f"Image {opts.image} not found.", file=sys.stderr)
+        if not prompt_yes_no("Do you want to pull the image now?"):
             print(
-                "Error: clone is only supported with docker and podman", file=sys.stderr
+                f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
             )
-            return 127
-        clone_image = get_clone_image(manager, opts.clone)
-        if not clone_image:
-            return 1
-        opts.image = clone_image
+            return False
 
-    # Dry run
-    if opts.dryrun:
-        cmd = generate_create_command(manager, opts, config)
-        full_cmd = manager.cmd_prefix + cmd
-        print(" ".join(full_cmd))
-        return 0
+    if not manager.pull(opts.image, opts.platform or None):
+        print(f"Failed to pull {opts.image}", file=sys.stderr)
+        return False
 
-    # Check if container already exists
-    if manager.exists(opts.name):
-        print(f"Distrobox named '{opts.name}' already exists.")
-        print("To enter, run:\n")
-        if config.rootful and os.getuid() != 0:
-            print(f"distrobox enter --root {opts.name}\n")
-        else:
-            print(f"distrobox enter {opts.name}\n")
-        return 0
+    return True
 
-    # Check/pull image
-    if opts.pull or not manager.image_exists(opts.image):
-        if not config.non_interactive and not opts.pull:
-            print(f"Image {opts.image} not found.", file=sys.stderr)
-            if not prompt_yes_no("Do you want to pull the image now?"):
-                print(
-                    f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
-                )
-                return 0
 
-        if not manager.pull(opts.image, opts.platform or None):
-            print(f"Failed to pull {opts.image}", file=sys.stderr)
-            return 1
+def _execute_create(
+    manager: ContainerManager,
+    opts: CreateOptions,
+    config: Config,
+) -> int:
+    """Execute container creation and handle result.
 
-    # Generate and run create command
+    Returns:
+        Exit code
+    """
     print(f"Creating '{opts.name}' using image {opts.image}\t", end="", file=sys.stderr)
 
     cmd = generate_create_command(manager, opts, config)
@@ -793,11 +904,7 @@ def run(args: list[str] | None = None) -> int:
     if result.returncode == 0:
         print_ok()
         print(f"Distrobox '{opts.name}' successfully created.", file=sys.stderr)
-        print("To enter, run:\n")
-        if config.rootful and os.getuid() != 0:
-            print(f"distrobox enter --root {opts.name}\n")
-        else:
-            print(f"distrobox enter {opts.name}\n")
+        _print_enter_hint(opts.name, config.rootful)
 
         # Generate desktop entry
         if not config.rootful and not opts.no_entry:
@@ -812,6 +919,68 @@ def run(args: list[str] | None = None) -> int:
         if result.stderr:
             print(result.stderr, file=sys.stderr)
         return result.returncode
+
+
+def run(args: list[str] | None = None) -> int:
+    """Run the distrobox-create command.
+
+    Args:
+        args: Command line arguments (uses sys.argv if None)
+
+    Returns:
+        Exit code
+    """
+    if check_sudo_doas():
+        return _print_sudo_error()
+
+    parser = create_parser()
+    parsed = parser.parse_args(args)
+
+    if parsed.compatibility:
+        return show_compatibility()
+
+    config = Config.load()
+    _apply_cli_overrides(config, parsed)
+
+    opts = _build_create_options(parsed, config)
+    if opts is None:
+        return 1
+
+    manager = detect_container_manager(
+        preferred=config.container_manager,
+        verbose=config.verbose,
+        rootful=config.rootful,
+        sudo_program=config.sudo_program,
+    )
+
+    # Handle clone
+    if opts.clone:
+        clone_image = _handle_clone(manager, opts)
+        if not clone_image:
+            return 1 if manager.is_podman or manager.is_docker else 127
+        opts.image = clone_image
+
+    # Dry run
+    if opts.dryrun:
+        cmd = generate_create_command(manager, opts, config)
+        full_cmd = manager.cmd_prefix + cmd
+        print(" ".join(full_cmd))
+        return 0
+
+    # Check if container already exists
+    if manager.exists(opts.name):
+        print(f"Distrobox named '{opts.name}' already exists.")
+        _print_enter_hint(opts.name, config.rootful)
+        return 0
+
+    # Check/pull image
+    if not _ensure_image(manager, opts, config):
+        # User declined to pull - return 0 (not an error)
+        if not opts.pull and not config.non_interactive:
+            return 0
+        return 1
+
+    return _execute_create(manager, opts, config)
 
 
 if __name__ == "__main__":
