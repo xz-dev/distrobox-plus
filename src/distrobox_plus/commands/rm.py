@@ -315,12 +315,16 @@ def run(args: list[str] | None = None) -> int:
     """
     # Check for sudo/doas
     if check_sudo_doas():
+        # Original uses basename and includes original args
+        prog_name = Path(sys.argv[0]).name
+        orig_args = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""
         print(
-            f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
+            f"Running {prog_name} via SUDO/DOAS is not supported. "
+            f"Instead, please try running:",
             file=sys.stderr,
         )
         print(
-            f"Instead, please try running:\n  {sys.argv[0]} --root",
+            f"  {prog_name} --root {orig_args}",
             file=sys.stderr,
         )
         return 1
@@ -366,10 +370,9 @@ def run(args: list[str] | None = None) -> int:
         # Use default name
         container_names = [DEFAULT_NAME]
 
-    # Original order: first prompt for deletion confirmation, then check running status
+    # Prompt for confirmation
     names_str = " ".join(container_names)
 
-    # Prompt for confirmation (matches original: "Do you really want to delete containers:%s?")
     if not config.non_interactive and not force:
         response = prompt_yes_no_strict(
             f"Do you really want to delete containers:{names_str}?",
@@ -381,29 +384,27 @@ def run(args: list[str] | None = None) -> int:
             print("Aborted.")
             return 0
 
-    # Check if any containers are running and prompt for force (after deletion confirmation)
-    # Original iterates through containers and breaks on first force confirmation
-    if not config.non_interactive and not force:
-        for name in container_names:
-            if manager.is_running(name):
-                # Original uses the full container_name_list in message, not just running ones
-                response_force = prompt_yes_no_strict(
-                    f"Container {names_str} running, do you want to force delete them?",
-                    default=True,
-                )
-                if response_force is None:
-                    handle_invalid_input()
-                if response_force:
-                    force = True
-                # Original breaks after first running container check (regardless of answer)
-                break
-
-    # Delete containers
+    # Delete containers, checking running status for each
     for name in container_names:
+        container_force = force
+
+        # If container is running and not already forcing, ask for this specific container
+        if not config.non_interactive and not force and manager.is_running(name):
+            response_force = prompt_yes_no_strict(
+                f"Container {name} is running, force delete?",
+                default=True,
+            )
+            if response_force is None:
+                handle_invalid_input()
+            if not response_force:
+                print(f"Skipping {name}.")
+                continue
+            container_force = True
+
         delete_container(
             manager,
             name,
-            force=force,
+            force=container_force,
             rm_home=config.container_rm_custom_home,
             non_interactive=config.non_interactive,
             verbose=config.verbose,
