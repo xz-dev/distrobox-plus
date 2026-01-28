@@ -1,1 +1,1 @@
-# Tests package
+# Distrobox behavior tests
