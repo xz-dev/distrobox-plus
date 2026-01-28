@@ -457,6 +457,11 @@ def _export_binary(
 def _find_desktop_files(exported_app: str, canon_dirs: list[str]) -> list[str]:
     """Find desktop files for the exported application.
 
+    Matches original shell script behavior:
+    - find ... -type f -print -o -type l -print
+    - grep -l -e "Exec=.*${exported_app}.*" -e "Name=.*${exported_app}.*"
+    - grep -L -e "Exec=.*${DISTROBOX_ENTER_PATH:-distrobox.*enter}.*"
+
     Args:
         exported_app: Application name or path to desktop file
         canon_dirs: List of canonical directories to search
@@ -470,41 +475,36 @@ def _find_desktop_files(exported_app: str, canon_dirs: list[str]) -> list[str]:
 
     desktop_files: list[str] = []
     distrobox_enter = _get_distrobox_enter_path()
+    # Escape special regex characters in distrobox_enter for matching
+    distrobox_enter_pattern = re.escape(distrobox_enter)
+
+    # Patterns to match (same as original grep -e)
+    exec_pattern = re.compile(f"Exec=.*{re.escape(exported_app)}.*")
+    name_pattern = re.compile(f"Name=.*{re.escape(exported_app)}.*")
+    # Pattern to exclude already exported apps (grep -L)
+    # Original uses: Exec=.*${DISTROBOX_ENTER_PATH:-"distrobox.*enter"}.*
+    exclude_pattern = re.compile(f"Exec=.*({distrobox_enter_pattern}|distrobox.*enter).*")
 
     for canon_dir in canon_dirs:
         if not Path(canon_dir).is_dir():
             continue
 
-        # Find all desktop files
-        for desktop_file in Path(canon_dir).glob("*.desktop"):
+        # Find all files and symlinks (matches: find ... -type f -print -o -type l -print)
+        for desktop_file in Path(canon_dir).iterdir():
+            if not (desktop_file.is_file() or desktop_file.is_symlink()):
+                continue
+
             try:
                 content = desktop_file.read_text()
                 # Check if it matches the exported app (by Exec or Name)
-                if (
-                    f"Exec=.*{exported_app}.*" in content
-                    or re.search(f"Exec=.*{re.escape(exported_app)}.*", content)
-                    or re.search(f"Name=.*{re.escape(exported_app)}.*", content)
-                ):
-                    # Skip already exported apps
-                    if distrobox_enter not in content and "distrobox.*enter" not in content:
-                        desktop_files.append(str(desktop_file))
+                if exec_pattern.search(content) or name_pattern.search(content):
+                    # Skip already exported apps (grep -L behavior)
+                    if not exclude_pattern.search(content):
+                        file_path = str(desktop_file)
+                        if file_path not in desktop_files:
+                            desktop_files.append(file_path)
             except OSError:
                 continue
-
-        # Also check symlinks
-        for desktop_file in Path(canon_dir).iterdir():
-            if desktop_file.suffix == ".desktop" and desktop_file.is_symlink():
-                try:
-                    content = desktop_file.read_text()
-                    if (
-                        re.search(f"Exec=.*{re.escape(exported_app)}.*", content)
-                        or re.search(f"Name=.*{re.escape(exported_app)}.*", content)
-                    ):
-                        if distrobox_enter not in content and "distrobox.*enter" not in content:
-                            if str(desktop_file) not in desktop_files:
-                                desktop_files.append(str(desktop_file))
-                except OSError:
-                    continue
 
     return desktop_files
 
@@ -547,6 +547,8 @@ def _get_canonical_dirs() -> list[str]:
 def _find_icon_files(desktop_files: list[str]) -> list[str]:
     """Find icon files for the desktop files.
 
+    Matches original shell script behavior using find -iname (case-insensitive).
+
     Args:
         desktop_files: List of desktop file paths
 
@@ -572,12 +574,17 @@ def _find_icon_files(desktop_files: list[str]) -> list[str]:
                         icon_files.append(icon_name)
                     else:
                         # Search for the icon in canonical paths
+                        # Original uses: find ... -iname "*${icon}*" (case-insensitive)
+                        icon_name_lower = icon_name.lower()
                         for search_dir in icon_search_dirs:
                             if not Path(search_dir).is_dir():
                                 continue
-                            for icon_path in Path(search_dir).rglob(f"*{icon_name}*"):
-                                if str(icon_path) not in icon_files:
-                                    icon_files.append(str(icon_path))
+                            # Recursively search with case-insensitive matching
+                            for icon_path in Path(search_dir).rglob("*"):
+                                if icon_name_lower in icon_path.name.lower():
+                                    path_str = str(icon_path)
+                                    if path_str not in icon_files:
+                                        icon_files.append(path_str)
         except OSError:
             continue
 
@@ -627,10 +634,14 @@ def _export_application(
     icon_file_absolute_path = ""
     for icon_file in icon_files:
         # Replace canonical paths with equivalent paths in HOME
+        # Original sed patterns:
+        #   s|/usr/share/|/run/host/${host_home}/.local/share/|g
+        #   s|/var/lib/flatpak/exports/share|/run/host/${host_home}/.local/share/|g
+        #   s|pixmaps|icons|g
         icon_home_directory = (
             os.path.dirname(icon_file)
             .replace("/usr/share/", f"/run/host/{host_home}/.local/share/")
-            .replace("/var/lib/flatpak/exports/share", f"/run/host/{host_home}/.local/share")
+            .replace("/var/lib/flatpak/exports/share", f"/run/host/{host_home}/.local/share/")
             .replace("pixmaps", "icons")
         )
 
@@ -765,6 +776,12 @@ def _export_application(
 def _list_exported_applications(host_home: str, container_id: str) -> int:
     """List exported applications from this container.
 
+    Matches original shell script behavior:
+    - find ... -type f -print -o -type l -print
+    - grep -l -e "Exec=.*${DISTROBOX_ENTER_PATH:-distrobox.*enter}.*"
+    - grep -Eo 'Name=.*' | head -n 1 | cut -d'=' -f2- | sed 's|(.*)||g'
+    - echo "${i}" | grep -q "${CONTAINER_ID}"
+
     Args:
         host_home: Host home directory
         container_id: Container ID
@@ -778,22 +795,36 @@ def _list_exported_applications(host_home: str, container_id: str) -> int:
     if not apps_dir.is_dir():
         return 0
 
-    for desktop_file in apps_dir.glob("*.desktop"):
+    # Match original: Exec=.*${DISTROBOX_ENTER_PATH:-"distrobox.*enter"}.*
+    distrobox_enter_pattern = re.escape(distrobox_enter)
+    exec_pattern = re.compile(f"Exec=.*({distrobox_enter_pattern}|distrobox.*enter).*")
+
+    # Find files and symlinks (matches: find ... -type f -print -o -type l -print)
+    for desktop_file in apps_dir.iterdir():
+        if not (desktop_file.is_file() or desktop_file.is_symlink()):
+            continue
+
         try:
             content = desktop_file.read_text()
-            # Check if it's a distrobox exported app
-            if distrobox_enter in content or re.search(r"distrobox.*enter", content):
-                # Check if it's from this container
-                if container_id in str(desktop_file):
-                    # Get app name
-                    name = ""
-                    for line in content.splitlines():
-                        if line.startswith("Name="):
-                            name = line.split("=", 1)[1]
-                            # Remove label
-                            name = re.sub(r"\(.*\)", "", name).strip()
-                            break
-                    print(f"{name:<20} | {desktop_file}")
+            # Check if it's a distrobox exported app (grep -l -e "Exec=...")
+            if not exec_pattern.search(content):
+                continue
+
+            # Print only stuff we exported from this box
+            # Original: echo "${i}" | grep -q "${CONTAINER_ID}"
+            if container_id not in str(desktop_file):
+                continue
+
+            # Get app name (grep -Eo 'Name=.*' | head -n 1 | cut -d'=' -f2-)
+            name = ""
+            for line in content.splitlines():
+                if line.startswith("Name="):
+                    name = line.split("=", 1)[1]
+                    # Remove label (sed 's|(.*)||g')
+                    name = re.sub(r"\(.*\)", "", name).strip()
+                    break
+
+            print(f"{name:<20} | {desktop_file}")
         except OSError:
             continue
 
@@ -802,6 +833,11 @@ def _list_exported_applications(host_home: str, container_id: str) -> int:
 
 def _list_exported_binaries(dest_path: str, container_id: str) -> int:
     """List exported binaries from this container.
+
+    Matches original shell script behavior:
+    - grep -l -e "^# distrobox_binary"
+    - name="$(grep -B1 "fi" "${i}" | grep exec | cut -d' ' -f2)"
+    - grep "^# name:.*" | grep -q "${CONTAINER_ID}"
 
     Args:
         dest_path: Path to search for binaries
@@ -820,19 +856,39 @@ def _list_exported_binaries(dest_path: str, container_id: str) -> int:
 
         try:
             content = binary_file.read_text()
-            # Check if it's a distrobox exported binary
-            if "# distrobox_binary" in content:
-                # Check if it's from this container
-                if f"# name: {container_id}" in content or f"name: {container_id}" in content:
-                    # Get original binary name
-                    for line in content.splitlines():
-                        if "exec" in line.lower() and "'" in line:
-                            # Extract the binary path
-                            match = re.search(r"exec\s+\S*\s*'([^']+)'", line, re.IGNORECASE)
-                            if match:
-                                name = match.group(1)
-                                print(f"{name:<20} | {binary_file}")
-                                break
+            lines = content.splitlines()
+
+            # Check if it's a distrobox exported binary (must start with "# distrobox_binary")
+            has_marker = any(line.startswith("# distrobox_binary") for line in lines)
+            if not has_marker:
+                continue
+
+            # Check if it's from this container (grep "^# name:.*" | grep -q "${CONTAINER_ID}")
+            name_match = any(
+                line.startswith("# name:") and container_id in line
+                for line in lines
+            )
+            if not name_match:
+                continue
+
+            # Get original binary name using original logic:
+            # grep -B1 "fi" | grep exec | cut -d' ' -f2
+            # This finds the line before "fi" that contains "exec"
+            name = ""
+            for i, line in enumerate(lines):
+                if line.strip() == "fi":
+                    # Check the line before "fi"
+                    if i > 0:
+                        prev_line = lines[i - 1]
+                        if "exec" in prev_line:
+                            # cut -d' ' -f2 (split by space, take field 2)
+                            parts = prev_line.split()
+                            if len(parts) >= 2:
+                                name = parts[1]
+                            break
+
+            if name:
+                print(f"{name:<20} | {binary_file}")
         except OSError:
             continue
 
