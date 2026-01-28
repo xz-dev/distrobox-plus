@@ -18,7 +18,14 @@ from urllib.error import URLError
 
 import platformdirs
 
-from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..config import (
+    VERSION,
+    Config,
+    DEFAULT_IMAGE,
+    DEFAULT_NAME,
+    check_sudo_doas,
+    get_user_info,
+)
 from ..container import detect_container_manager
 from ..utils import (
     derive_container_name,
@@ -66,8 +73,10 @@ def show_compatibility() -> int:
         # Check connectivity first
         urlopen("https://github.com", timeout=5)
     except URLError:
-        print("ERROR: no cache file and no connectivity found, cannot retrieve compatibility list.",
-              file=sys.stderr)
+        print(
+            "ERROR: no cache file and no connectivity found, cannot retrieve compatibility list.",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -112,6 +121,7 @@ def show_compatibility() -> int:
 @dataclass
 class CreateOptions:
     """Options for container creation."""
+
     image: str = DEFAULT_IMAGE
     name: str = ""
     hostname: str = ""
@@ -141,9 +151,34 @@ class CreateOptions:
 
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser for distrobox-create."""
+    # Get current hostname for default display
+    current_hostname = get_hostname()
+
+    epilog = f"""\
+Examples:
+    distrobox create --image alpine:latest --name test --init-hooks "touch /var/tmp/test1"
+    distrobox create --image fedora:39 --name test --additional-flags "--env MY_VAR=value"
+    distrobox create --clone fedora-39 --name fedora-39-copy
+    distrobox create --image alpine my-alpine-container
+    distrobox create --pull --image centos:stream9 --home ~/distrobox/centos9
+    distrobox create --image alpine:latest --name test2 --additional-packages "git tmux vim"
+    distrobox create --image ubuntu:22.04 --name ubuntu-nvidia --nvidia
+
+    DBX_NON_INTERACTIVE=1 DBX_CONTAINER_NAME=test-alpine DBX_CONTAINER_IMAGE=alpine distrobox-create
+
+Compatibility:
+    For a list of compatible images and container managers, please consult the man page:
+        man distrobox-compatibility
+    or run:
+        distrobox create --compatibility
+    or consult: https://github.com/89luca89/distrobox/blob/main/docs/compatibility.md
+"""
+
     parser = argparse.ArgumentParser(
         prog="distrobox-create",
         description="Create a new distrobox container",
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "name_positional",
@@ -151,142 +186,162 @@ def create_parser() -> argparse.ArgumentParser:
         help="Container name (positional)",
     )
     parser.add_argument(
-        "-i", "--image",
-        help=f"Image to use (default: {DEFAULT_IMAGE})",
+        "-i",
+        "--image",
+        help=f"image to use for the container (default: {DEFAULT_IMAGE})",
     )
     parser.add_argument(
-        "-n", "--name",
-        help=f"Name for the distrobox (default: {DEFAULT_NAME})",
+        "-n",
+        "--name",
+        help=f"name for the distrobox (default: {DEFAULT_NAME})",
     )
     parser.add_argument(
         "--hostname",
-        help="Hostname for the distrobox",
+        help=f"hostname for the distrobox (default: {current_hostname})",
     )
     parser.add_argument(
-        "-c", "--clone",
-        help="Clone an existing distrobox",
+        "-c",
+        "--clone",
+        help="name of the distrobox container to use as base for a new container. "
+        "Useful to rename an existing distrobox or have multiple copies of the same environment",
     )
     parser.add_argument(
-        "-H", "--home",
-        help="Custom HOME directory",
+        "-H",
+        "--home",
+        help="select a custom HOME directory for the container. "
+        "Useful to avoid host's home littering with temp files",
     )
     parser.add_argument(
         "--volume",
         action="append",
         default=[],
-        help="Additional volumes to mount",
+        help="additional volumes to add to the container",
     )
     parser.add_argument(
-        "-a", "--additional-flags",
+        "-a",
+        "--additional-flags",
         action="append",
         default=[],
-        help="Additional flags for container manager",
+        help="additional flags to pass to the container manager command",
     )
     parser.add_argument(
-        "-ap", "--additional-packages",
+        "-ap",
+        "--additional-packages",
         action="append",
         default=[],
-        help="Additional packages to install (can be specified multiple times)",
+        help="additional packages to install during initial container setup",
     )
     parser.add_argument(
         "--init-hooks",
-        help="Commands to run at end of initialization",
+        help="additional commands to execute at the end of container initialization",
     )
     parser.add_argument(
         "--pre-init-hooks",
-        help="Commands to run at start of initialization",
+        help="additional commands to execute at the start of container initialization",
     )
     parser.add_argument(
         "--platform",
-        help="Platform specification (e.g., linux/arm64)",
+        help="specify which platform to use, eg: linux/arm64",
     )
     parser.add_argument(
-        "-p", "--pull",
+        "-p",
+        "--pull",
         action="store_true",
-        help="Pull image even if it exists locally",
+        help="pull the image even if it exists locally (implies --yes)",
     )
     parser.add_argument(
-        "-I", "--init",
+        "-I",
+        "--init",
         action="store_true",
-        help="Use init system inside container",
+        help="use init system (like systemd) inside the container. "
+        "This will make host's processes not visible from within the container (assumes --unshare-process). "
+        "May require additional packages depending on the container image",
     )
     parser.add_argument(
         "--nvidia",
         action="store_true",
-        help="Integrate host nVidia drivers",
+        help="try to integrate host's nVidia drivers in the guest",
     )
     parser.add_argument(
         "--no-entry",
         action="store_true",
-        help="Don't generate application entry",
+        help="do not generate a container entry in the application list",
     )
     parser.add_argument(
-        "-d", "--dry-run",
+        "-d",
+        "--dry-run",
         action="store_true",
-        help="Print command without executing",
+        help="only print the container manager command generated",
     )
     parser.add_argument(
-        "-Y", "--yes",
+        "-Y",
+        "--yes",
         action="store_true",
-        help="Non-interactive mode",
+        help="non-interactive, pull images without asking",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
-        help="Launch with root privileges",
+        help="launch podman/docker/lilipod with root privileges. "
+        "Do not use 'sudo distrobox'. Use DBX_SUDO_PROGRAM env var or "
+        "distrobox_sudo_program config var to specify a different program (e.g. 'doas')",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
-        help="Show more verbosity",
+        help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
     parser.add_argument(
-        "-C", "--compatibility",
+        "-C",
+        "--compatibility",
         action="store_true",
-        help="Show list of compatible images",
+        help="show list of compatible images",
     )
 
     # Unshare options
     parser.add_argument(
         "--unshare-ipc",
         action="store_true",
-        help="Do not share ipc namespace with host",
+        help="do not share ipc namespace with host",
     )
     parser.add_argument(
         "--unshare-groups",
         action="store_true",
-        help="Do not forward user's additional groups into the container",
+        help="do not forward user's additional groups into the container",
     )
     parser.add_argument(
         "--unshare-netns",
         action="store_true",
-        help="Do not share the net namespace with host",
+        help="do not share the net namespace with host",
     )
     parser.add_argument(
         "--unshare-process",
         action="store_true",
-        help="Do not share process namespace with host",
+        help="do not share process namespace with host",
     )
     parser.add_argument(
         "--unshare-devsys",
         action="store_true",
-        help="Do not share host devices and sysfs dirs from host",
+        help="do not share host devices and sysfs dirs from host",
     )
     parser.add_argument(
         "--unshare-all",
         action="store_true",
-        help="Activate all the unshare flags",
+        help="activate all the unshare flags",
     )
     parser.add_argument(
         "--absolutely-disable-root-password-i-am-really-positively-sure",
         action="store_true",
         dest="nopasswd",
-        help="Skip root password setup for rootful containers",
+        help="[WARNING] when setting up a rootful distrobox, this will skip user password setup, leaving it blank",
     )
 
     return parser
@@ -310,7 +365,9 @@ def get_clone_image(manager: ContainerManager, clone_name: str) -> str | None:
 
     if status == "running":
         print(f"Container {clone_name} is running.", file=sys.stderr)
-        print("Please stop it first. Cannot clone a running container.", file=sys.stderr)
+        print(
+            "Please stop it first. Cannot clone a running container.", file=sys.stderr
+        )
         return None
 
     # Get container ID
@@ -368,15 +425,17 @@ def generate_create_command(
         cmd.append(f"--platform={opts.platform}")
 
     # Basic container settings
-    cmd.extend([
-        f"--hostname={opts.hostname}",
-        f"--name={opts.name}",
-        "--privileged",
-        "--security-opt=label=disable",
-        "--security-opt=apparmor=unconfined",
-        "--pids-limit=-1",
-        "--user=root:root",
-    ])
+    cmd.extend(
+        [
+            f"--hostname={opts.hostname}",
+            f"--name={opts.name}",
+            "--privileged",
+            "--security-opt=label=disable",
+            "--security-opt=apparmor=unconfined",
+            "--pids-limit=-1",
+            "--user=root:root",
+        ]
+    )
 
     # Namespace sharing
     if not opts.unshare_ipc:
@@ -387,15 +446,17 @@ def generate_create_command(
         cmd.append("--pid=host")
 
     # Labels and environment
-    cmd.extend([
-        "--label=manager=distrobox",
-        f"--label=distrobox.unshare_groups={1 if opts.unshare_groups else 0}",
-        f"--env=SHELL={Path(shell).name}",
-        f"--env=HOME={container_home}",
-        f"--env=container={manager.name}",
-        "--env=TERMINFO_DIRS=/usr/share/terminfo:/run/host/usr/share/terminfo",
-        f"--env=CONTAINER_ID={opts.name}",
-    ])
+    cmd.extend(
+        [
+            "--label=manager=distrobox",
+            f"--label=distrobox.unshare_groups={1 if opts.unshare_groups else 0}",
+            f"--env=SHELL={Path(shell).name}",
+            f"--env=HOME={container_home}",
+            f"--env=container={manager.name}",
+            "--env=TERMINFO_DIRS=/usr/share/terminfo:/run/host/usr/share/terminfo",
+            f"--env=CONTAINER_ID={opts.name}",
+        ]
+    )
 
     # Volume mounts
     cmd.append("--volume=/tmp:/tmp:rslave")
@@ -428,12 +489,14 @@ def generate_create_command(
     if opts.init and manager.is_docker:
         cmd.append("--cgroupns=host")
     if opts.init and not manager.is_podman:
-        cmd.extend([
-            "--stop-signal=SIGRTMIN+3",
-            "--mount=type=tmpfs,destination=/run",
-            "--mount=type=tmpfs,destination=/run/lock",
-            "--mount=type=tmpfs,destination=/var/lib/journal",
-        ])
+        cmd.extend(
+            [
+                "--stop-signal=SIGRTMIN+3",
+                "--mount=type=tmpfs,destination=/run",
+                "--mount=type=tmpfs,destination=/run/lock",
+                "--mount=type=tmpfs,destination=/var/lib/journal",
+            ]
+        )
 
     # devpts handling
     if not opts.unshare_devsys:
@@ -496,10 +559,12 @@ def generate_create_command(
     if manager.is_podman:
         if manager.has_crun():
             cmd.append("--runtime=crun")
-        cmd.extend([
-            "--annotation=run.oci.keep_original_groups=1",
-            "--ulimit=host",
-        ])
+        cmd.extend(
+            [
+                "--annotation=run.oci.keep_original_groups=1",
+                "--ulimit=host",
+            ]
+        )
         if opts.init:
             cmd.append("--systemd=always")
         if not config.rootful:
@@ -526,19 +591,29 @@ def generate_create_command(
     cmd.append(opts.image)
 
     # Entrypoint arguments (use space-separated format for distrobox-init compatibility)
-    cmd.extend([
-        "--verbose",
-        "--name", user,
-        "--user", str(uid),
-        "--group", str(gid),
-        "--home", opts.custom_home or home,
-        "--init", str(1 if opts.init else 0),
-        "--nvidia", str(1 if opts.nvidia else 0),
-        "--pre-init-hooks", opts.pre_init_hooks,
-        "--additional-packages", opts.additional_packages,
-        "--",
-        opts.init_hooks,
-    ])
+    cmd.extend(
+        [
+            "--verbose",
+            "--name",
+            user,
+            "--user",
+            str(uid),
+            "--group",
+            str(gid),
+            "--home",
+            opts.custom_home or home,
+            "--init",
+            str(1 if opts.init else 0),
+            "--nvidia",
+            str(1 if opts.nvidia else 0),
+            "--pre-init-hooks",
+            opts.pre_init_hooks,
+            "--additional-packages",
+            opts.additional_packages,
+            "--",
+            opts.init_hooks,
+        ]
+    )
 
     return cmd
 
@@ -615,7 +690,10 @@ def run(args: list[str] | None = None) -> int:
 
     # Validate hostname
     if not validate_hostname(opts.hostname):
-        print(f"Error: Invalid hostname '{opts.hostname}', longer than 64 characters", file=sys.stderr)
+        print(
+            f"Error: Invalid hostname '{opts.hostname}', longer than 64 characters",
+            file=sys.stderr,
+        )
         print("Use --hostname argument to set it manually", file=sys.stderr)
         return 1
 
@@ -666,7 +744,9 @@ def run(args: list[str] | None = None) -> int:
     # Handle clone
     if opts.clone:
         if not manager.is_podman and not manager.is_docker:
-            print("Error: clone is only supported with docker and podman", file=sys.stderr)
+            print(
+                "Error: clone is only supported with docker and podman", file=sys.stderr
+            )
             return 127
         clone_image = get_clone_image(manager, opts.clone)
         if not clone_image:
@@ -695,7 +775,9 @@ def run(args: list[str] | None = None) -> int:
         if not config.non_interactive and not opts.pull:
             print(f"Image {opts.image} not found.", file=sys.stderr)
             if not prompt_yes_no("Do you want to pull the image now?"):
-                print(f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr)
+                print(
+                    f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
+                )
                 return 0
 
         if not manager.pull(opts.image, opts.platform or None):
