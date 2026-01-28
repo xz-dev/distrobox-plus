@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 distrobox-plus = "distrobox_plus:main"
+distrobox-export = "distrobox_plus.commands.export:run"
 
 [project.optional-dependencies]
 dev = [
@@ -31,6 +32,7 @@ markers = [
     "create: tests for distrobox-create command",
     "enter: tests for distrobox-enter command",
     "ephemeral: tests for distrobox-ephemeral command",
+    "export: tests for distrobox-export command",
     "list: tests for distrobox-list command",
     "stop: tests for distrobox-stop command",
     "rm: tests for distrobox-rm command",
