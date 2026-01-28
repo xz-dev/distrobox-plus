@@ -318,6 +318,10 @@ def filter_env_for_container() -> dict[str, str]:
         if key in skip_patterns:
             continue
 
+        # Skip variables starting with underscore (like original ^_)
+        if key.startswith("_"):
+            continue
+
         # Skip XDG_*_DIRS but keep other XDG vars
         if key.startswith("XDG_") and key.endswith("_DIRS"):
             continue

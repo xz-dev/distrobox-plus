@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_doas, get_user_info
@@ -20,14 +19,10 @@ from ..container import detect_container_manager
 from ..utils import (
     prompt_yes_no,
     is_tty,
-    get_cache_dir,
     filter_env_for_container,
     build_container_path,
-    get_standard_paths,
     print_ok,
-    print_err,
     print_status,
-    green,
     yellow,
     red,
 )
@@ -63,7 +58,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Reset PATH to FHS standard",
     )
     parser.add_argument(
-        "-T", "--no-tty",
+        "-T", "-H", "--no-tty",
         action="store_true",
         help="Don't allocate a TTY",
     )
@@ -219,71 +214,53 @@ def wait_for_container_setup(
     Returns:
         True if setup completed successfully
     """
-    cache_dir = get_cache_dir()
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    # Get timestamp for log filtering
+    log_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000000000+00:00")
 
-    fifo_path = cache_dir / f".{container_name}.fifo"
+    print_status("Starting container...")
 
-    # Clean up any existing fifo
-    if fifo_path.exists():
-        fifo_path.unlink()
+    while True:
+        # Check container is still running
+        status = manager.get_status(container_name)
+        if status != "running":
+            print("\nContainer Setup Failure!", file=sys.stderr)
+            return False
 
-    # Create named pipe
-    os.mkfifo(fifo_path)
+        # Start logs process
+        logs_cmd = [*manager._cmd_prefix, "logs", "--since", log_timestamp, "-f", container_name]
+        logs_proc = subprocess.Popen(
+            logs_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
 
-    try:
-        # Get timestamp for log filtering
-        log_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000000000+00:00")
+        try:
+            for line in iter(logs_proc.stdout.readline, ""):  # type: ignore
+                line = line.strip()
+                if not line:
+                    continue
 
-        print_status("Starting container...")
-
-        while True:
-            # Check container is still running
-            status = manager.get_status(container_name)
-            if status != "running":
-                print("\nContainer Setup Failure!", file=sys.stderr)
-                return False
-
-            # Start logs process
-            logs_cmd = [*manager._cmd_prefix, "logs", "--since", log_timestamp, "-f", container_name]
-            logs_proc = subprocess.Popen(
-                logs_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-
-            try:
-                for line in iter(logs_proc.stdout.readline, ""):  # type: ignore
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    if line.startswith("+"):
-                        # Logging command, ignore
-                        continue
-                    elif line.startswith("Error:"):
-                        print(f"\n{red(line)}", file=sys.stderr)
-                        logs_proc.kill()
-                        return False
-                    elif line.startswith("Warning:"):
-                        print(f"\n{yellow(line)}", file=sys.stderr, end="")
-                    elif line.startswith("distrobox:"):
-                        msg = line.split(" ", 1)[1] if " " in line else line
-                        print_ok()
-                        print_status(msg)
-                    elif line == "container_setup_done":
-                        print_ok()
-                        logs_proc.kill()
-                        return True
-            finally:
-                logs_proc.kill()
-                logs_proc.wait()
-
-    finally:
-        # Cleanup fifo
-        if fifo_path.exists():
-            fifo_path.unlink()
+                if line.startswith("+"):
+                    # Logging command, ignore
+                    continue
+                elif line.startswith("Error:"):
+                    print(f"\n{red(line)}", file=sys.stderr)
+                    logs_proc.kill()
+                    return False
+                elif line.startswith("Warning:"):
+                    print(f"\n{yellow(line)}", file=sys.stderr, end="")
+                elif line.startswith("distrobox:"):
+                    msg = line.split(" ", 1)[1] if " " in line else line
+                    print_ok()
+                    print_status(msg)
+                elif line == "container_setup_done":
+                    print_ok()
+                    logs_proc.kill()
+                    return True
+        finally:
+            logs_proc.kill()
+            logs_proc.wait()
 
 
 def run(args: list[str] | None = None) -> int:
@@ -349,19 +326,17 @@ def run(args: list[str] | None = None) -> int:
     headless = parsed.no_tty or not is_tty()
 
     # Process additional flags
+    # Match original behavior: convert "--flag value" to "--flag=value"
+    # and split on " --" boundaries
     additional_flags = []
     for flag in parsed.additional_flags:
-        # Convert space-separated flags to proper format
-        parts = flag.split()
+        # Convert "--flag value" to "--flag=value" (only for alphabetic flags)
+        converted = re.sub(r'(--[a-zA-Z]+) ([^ ]+)', r'\1=\2', flag)
+        # Split on " --" to handle multiple flags in one argument
+        parts = converted.replace(' --', '\n--').split('\n')
         for part in parts:
-            if part.startswith("--") and "=" not in part and len(parts) > 1:
-                # This might be a --flag value pair
-                idx = parts.index(part)
-                if idx + 1 < len(parts) and not parts[idx + 1].startswith("--"):
-                    additional_flags.append(f"{part}={parts[idx + 1]}")
-                else:
-                    additional_flags.append(part)
-            else:
+            part = part.strip()
+            if part:
                 additional_flags.append(part)
 
     # Detect container manager
@@ -399,7 +374,9 @@ def run(args: list[str] | None = None) -> int:
             cmd.extend(container_command)
         else:
             cmd.extend(["/bin/sh", "-c", f"$(getent passwd '{user}' | cut -f 7 -d :) -l"])
-        print(" ".join(cmd))
+        # Include container manager prefix (like original distrobox)
+        full_cmd = manager.cmd_prefix + cmd
+        print(" ".join(full_cmd))
         return 0
 
     # Container doesn't exist - offer to create it
