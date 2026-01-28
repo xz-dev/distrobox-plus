@@ -28,19 +28,31 @@ def get_config_paths() -> list[Path]:
 
     Configuration files are loaded in order, with later files overriding earlier ones.
     Environment variables have highest priority and override all config files.
+
+    Matches original distrobox config file search order exactly:
+    1. NixOS derivation config (relative to script)
+    2. /usr/share/distrobox/distrobox.conf
+    3. /usr/share/defaults/distrobox/distrobox.conf
+    4. /usr/etc/distrobox/distrobox.conf
+    5. /usr/local/share/distrobox/distrobox.conf
+    6. /etc/distrobox/distrobox.conf
+    7. ${XDG_CONFIG_HOME}/distrobox/distrobox.conf
+    8. ~/.distroboxrc
     """
+    paths: list[Path] = []
+
     # Get the directory of the distrobox script itself (for NixOS compatibility)
+    # Original: self_dir="$(dirname "$(realpath "$0")")"
+    # Original: nix_config_file="${self_dir}/../share/distrobox/distrobox.conf"
     self_path = shutil.which("distrobox")
-    nix_config = None
     if self_path:
-        self_dir = Path(self_path).resolve().parent
+        # Use realpath to resolve symlinks (matches original behavior)
+        self_dir = Path(os.path.realpath(self_path)).parent
         nix_config = self_dir.parent / "share" / "distrobox" / "distrobox.conf"
+        if nix_config.exists():
+            paths.append(nix_config)
 
-    paths = []
-    if nix_config and nix_config.exists():
-        paths.append(nix_config)
-
-    # System-wide config locations
+    # System-wide config locations (in original order)
     system_paths = [
         Path("/usr/share/distrobox/distrobox.conf"),
         Path("/usr/share/defaults/distrobox/distrobox.conf"),
@@ -50,12 +62,12 @@ def get_config_paths() -> list[Path]:
     ]
     paths.extend(p for p in system_paths if p.exists())
 
-    # User config locations
+    # User config: ${XDG_CONFIG_HOME:-"${HOME}/.config"}/distrobox/distrobox.conf
     user_config = Path(platformdirs.user_config_dir("distrobox")) / "distrobox.conf"
     if user_config.exists():
         paths.append(user_config)
 
-    # Legacy user config
+    # Legacy user config: ~/.distroboxrc
     legacy_config = Path.home() / ".distroboxrc"
     if legacy_config.exists():
         paths.append(legacy_config)
@@ -220,6 +232,7 @@ def get_user_info() -> tuple[str, str, str]:
     """Get current user info: (username, home, shell).
 
     Falls back to getent/passwd if environment variables are not set.
+    Matches original distrobox behavior with /bin/bash as default shell.
     """
     import pwd
 
@@ -234,9 +247,13 @@ def get_user_info() -> tuple[str, str, str]:
             home = home or pw.pw_dir
             shell = shell or pw.pw_shell
         except KeyError:
-            # Fallback defaults
+            # Fallback defaults (match original distrobox)
             user = user or "nobody"
             home = home or "/"
-            shell = shell or "/bin/sh"
+            shell = shell or "/bin/bash"
+
+    # Final fallback for shell (matches original: ${SHELL:-"/bin/bash"})
+    if not shell:
+        shell = "/bin/bash"
 
     return user, home, shell  # type: ignore[return-value]
