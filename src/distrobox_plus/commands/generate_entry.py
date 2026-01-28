@@ -15,6 +15,7 @@ from pathlib import Path
 
 import platformdirs
 
+from .. import COMMAND_NAME
 from ..config import VERSION, Config, check_sudo_doas
 from ..container import ContainerManager, detect_container_manager
 
@@ -46,7 +47,7 @@ DEFAULT_ICON_URL = "https://raw.githubusercontent.com/89luca89/distrobox/main/ic
 
 def _get_xdg_data_home() -> Path:
     """Get XDG_DATA_HOME directory."""
-    return Path(platformdirs.user_data_dir()).parent
+    return Path(platformdirs.user_data_dir())
 
 
 def _get_default_icon_path() -> Path:
@@ -62,15 +63,6 @@ def _get_applications_dir() -> Path:
 def _get_icons_dir() -> Path:
     """Get distrobox icons directory."""
     return _get_xdg_data_home() / "icons" / "distrobox"
-
-
-def _get_distrobox_path() -> Path:
-    """Get path to distrobox executable."""
-    path = shutil.which("distrobox")
-    if path:
-        return Path(os.path.realpath(path)).parent
-    # Fallback to current script's directory
-    return Path(__file__).parent.parent.parent
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -322,7 +314,6 @@ def _generate_desktop_entry(
     container_name: str,
     icon: str,
     extra_flags: str,
-    distrobox_path: Path,
 ) -> str:
     """Generate desktop entry content.
 
@@ -330,7 +321,6 @@ def _generate_desktop_entry(
         container_name: Container name
         icon: Icon path
         extra_flags: Extra flags for distrobox commands
-        distrobox_path: Path to distrobox executable
 
     Returns:
         Desktop entry content
@@ -343,18 +333,18 @@ Name={entry_name}
 GenericName=Terminal entering {entry_name}
 Comment=Terminal entering {entry_name}
 Categories=Distrobox;System;Utility
-Exec={distrobox_path}/distrobox enter {extra_flags} {container_name}
+Exec=/bin/env {COMMAND_NAME} enter {extra_flags} {container_name}
 Icon={icon}
 Keywords=distrobox;
 NoDisplay=false
 Terminal=true
-TryExec={distrobox_path}/distrobox
+TryExec={COMMAND_NAME}
 Type=Application
 Actions=Remove;
 
 [Desktop Action Remove]
 Name=Remove {entry_name} from system
-Exec={distrobox_path}/distrobox rm {extra_flags} {container_name}
+Exec=/bin/env {COMMAND_NAME} rm {extra_flags} {container_name}
 """
 
 
@@ -441,15 +431,11 @@ def _generate_entry(
     # Resolve icon
     resolved_icon = _resolve_icon(icon, container_name, manager, config)
 
-    # Get distrobox path
-    distrobox_path = _get_distrobox_path()
-
     # Generate desktop entry
     desktop_content = _generate_desktop_entry(
         container_name,
         resolved_icon,
         extra_flags.strip(),
-        distrobox_path,
     )
 
     # Write desktop file
