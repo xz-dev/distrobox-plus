@@ -70,17 +70,17 @@ def get_all_distrobox_names(manager: ContainerManager) -> list[str]:
     return [c["name"] for c in containers]
 
 
-def stop_container(manager: ContainerManager, name: str) -> bool:
-    """Stop a single container.
+def stop_container(manager: ContainerManager, name: str) -> int:
+    """Stop a single container with output passthrough.
 
     Args:
         manager: Container manager
         name: Container name
 
     Returns:
-        True if successful
+        Exit code from container manager
     """
-    return manager.stop(name)
+    return manager.run_interactive("stop", name)
 
 
 def run(args: list[str] | None = None) -> int:
@@ -152,11 +152,9 @@ def run(args: list[str] | None = None) -> int:
     # Stop containers
     exit_code = 0
     for name in container_names:
-        if stop_container(manager, name):
-            print(f"Stopped {name}")
-        else:
-            print(f"Failed to stop {name}", file=sys.stderr)
-            exit_code = 1
+        ret = stop_container(manager, name)
+        if ret != 0:
+            exit_code = ret
 
     return exit_code
 
