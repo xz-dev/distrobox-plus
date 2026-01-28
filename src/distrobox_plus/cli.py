@@ -15,6 +15,7 @@ distrobox version: {VERSION}
 Choose one of the available commands:
     create
     enter
+    ephemeral
     list | ls
     rm
     stop
@@ -56,6 +57,10 @@ def main(argv: list[str] | None = None) -> int:
 
         case "enter":
             from .commands.enter import run
+            return run(args)
+
+        case "ephemeral":
+            from .commands.ephemeral import run
             return run(args)
 
         case "list" | "ls":

@@ -2,7 +2,6 @@
 name = "distrobox-plus"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
 authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }
 ]
@@ -31,6 +30,7 @@ markers = [
     "integration: marks tests as requiring real container operations",
     "create: tests for distrobox-create command",
     "enter: tests for distrobox-enter command",
+    "ephemeral: tests for distrobox-ephemeral command",
     "list: tests for distrobox-list command",
     "stop: tests for distrobox-stop command",
     "rm: tests for distrobox-rm command",
