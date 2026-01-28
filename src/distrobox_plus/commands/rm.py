@@ -6,7 +6,6 @@ Removes one or more distrobox containers and cleans up exports.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -16,11 +15,56 @@ from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
 from ..container import detect_container_manager
-from ..utils import prompt_yes_no, get_script_path
+from ..utils import get_script_path
 from .list import list_containers
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
+
+
+# Valid yes/no responses matching original distrobox
+VALID_YES = ("y", "Y", "Yes", "yes", "YES")
+VALID_NO = ("n", "N", "No", "no", "NO")
+
+
+def prompt_yes_no_strict(message: str, default: bool = True) -> bool | None:
+    """Prompt user for yes/no confirmation with strict validation.
+
+    Matches original distrobox behavior: invalid input returns None (caller should exit).
+
+    Args:
+        message: Prompt message
+        default: Default value if user presses enter
+
+    Returns:
+        True for yes, False for no, None for invalid input
+    """
+    default_str = "Y/n" if default else "y/N"
+    try:
+        response = input(f"{message} [{default_str}]: ").strip()
+    except EOFError:
+        return default
+
+    if not response:
+        return default
+
+    if response in VALID_YES:
+        return True
+    if response in VALID_NO:
+        return False
+
+    # Invalid input - return None so caller can exit
+    return None
+
+
+def handle_invalid_input() -> None:
+    """Print invalid input error and exit."""
+    print("Invalid input.", file=sys.stderr)
+    print(
+        "The available choices are: y,Y,Yes,yes,YES or n,N,No,no,NO.\nExiting.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -123,26 +167,29 @@ def cleanup_exported_apps(container_name: str) -> None:
     if not apps_dir.exists():
         return
 
-    # Find desktop files that match the container
+    # Find desktop files that match the container (original uses find with glob pattern)
+    # Pattern: ${HOME}/.local/share/applications/${container_name}*
     pattern = f"{container_name}*"
+    exec_pattern = re.compile(rf"Exec=.*{re.escape(container_name)} ")
+
     for desktop_file in apps_dir.glob(pattern):
         if not desktop_file.is_file() and not desktop_file.is_symlink():
             continue
 
         try:
             content = desktop_file.read_text()
-            # Verify this is for our container
-            if f"Exec=.*{container_name} " not in content and container_name not in desktop_file.name:
+            # Verify this is for our container using regex (matches original grep -le)
+            if not exec_pattern.search(content):
                 continue
 
-            # Extract app name and icon
+            # Extract app name and icon (first occurrence only, like original head -n 1)
             app_name = None
             icon_name = None
 
             for line in content.splitlines():
-                if line.startswith("Name="):
+                if line.startswith("Name=") and app_name is None:
                     app_name = line.split("=", 1)[1]
-                elif line.startswith("Icon="):
+                elif line.startswith("Icon=") and icon_name is None:
                     icon_name = line.split("=", 1)[1]
 
             if app_name:
@@ -217,16 +264,21 @@ def delete_container(
     container_home = manager.get_container_home(name)
 
     # If container has custom home, prompt for deletion
+    # Original: only prompts if rm_home=1 AND non_interactive=0, default is "N"
     rm_home_local = False
     if container_home and container_home != host_home:
         if rm_home and not non_interactive:
-            if prompt_yes_no(
+            response = prompt_yes_no_strict(
                 f"Do you want to remove custom home of container {name} ({container_home})?",
                 default=False,
-            ):
-                rm_home_local = True
-        elif rm_home:
-            rm_home_local = True
+            )
+            if response is None:
+                handle_invalid_input()
+            rm_home_local = response
+        elif rm_home and non_interactive:
+            # Original: if non_interactive, response_rm_home stays "N" (default)
+            # so rm_home_local stays False
+            rm_home_local = False
 
     # Remove the container
     print("Removing container...")
@@ -314,46 +366,50 @@ def run(args: list[str] | None = None) -> int:
         # Use default name
         container_names = [DEFAULT_NAME]
 
-    # Check if any containers are running and prompt for force
-    if not config.non_interactive and not force:
-        running = []
-        for name in container_names:
-            if manager.is_running(name):
-                running.append(name)
-
-        if running:
-            names_str = " ".join(running)
-            if prompt_yes_no(
-                f"Container(s) {names_str} running, do you want to force delete them?",
-            ):
-                force = True
-            else:
-                print("Aborted.")
-                return 0
-
-    # Prompt for confirmation
+    # Original order: first prompt for deletion confirmation, then check running status
     names_str = " ".join(container_names)
-    if not config.non_interactive:
-        if not prompt_yes_no(f"Do you really want to delete containers: {names_str}?"):
+
+    # Prompt for confirmation (matches original: "Do you really want to delete containers:%s?")
+    if not config.non_interactive and not force:
+        response = prompt_yes_no_strict(
+            f"Do you really want to delete containers:{names_str}?",
+            default=True,
+        )
+        if response is None:
+            handle_invalid_input()
+        if not response:
             print("Aborted.")
             return 0
 
+    # Check if any containers are running and prompt for force (after deletion confirmation)
+    # Original iterates through containers and breaks on first force confirmation
+    if not config.non_interactive and not force:
+        for name in container_names:
+            if manager.is_running(name):
+                # Original uses the full container_name_list in message, not just running ones
+                response_force = prompt_yes_no_strict(
+                    f"Container {names_str} running, do you want to force delete them?",
+                    default=True,
+                )
+                if response_force is None:
+                    handle_invalid_input()
+                if response_force:
+                    force = True
+                # Original breaks after first running container check (regardless of answer)
+                break
+
     # Delete containers
-    exit_code = 0
     for name in container_names:
-        if delete_container(
+        delete_container(
             manager,
             name,
             force=force,
             rm_home=config.container_rm_custom_home,
             non_interactive=config.non_interactive,
             verbose=config.verbose,
-        ):
-            print(f"Deleted {name}")
-        else:
-            exit_code = 1
+        )
 
-    return exit_code
+    return 0
 
 
 if __name__ == "__main__":
