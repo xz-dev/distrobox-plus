@@ -177,9 +177,8 @@ def _get_container_distro(
         Distribution ID or None
     """
     # Build cp command
+    # Note: --log-level is already in manager.cmd_prefix if verbose
     cp_args = ["cp"]
-    if manager.verbose:
-        cp_args.extend(["--log-level", "debug"])
 
     # Docker uses -L flag for cp
     if manager.is_docker:

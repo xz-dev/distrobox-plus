@@ -128,10 +128,35 @@ def prompt_yes_no(
     )
 
 
+def get_command_path() -> Path | None:
+    """Get path to the current command binary.
+
+    Tries to find the current command (distrobox-plus or distrobox)
+    by checking sys.argv[0] first, then searching PATH.
+
+    Returns:
+        Path to the command binary or None if not found
+    """
+    from . import COMMAND_NAME
+
+    # First try sys.argv[0] if it's an absolute path
+    if sys.argv and os.path.isabs(sys.argv[0]):
+        argv_path = Path(os.path.realpath(sys.argv[0]))
+        if argv_path.exists():
+            return argv_path
+
+    # Try to find current command in PATH
+    cmd_path = shutil.which(COMMAND_NAME)
+    if cmd_path:
+        return Path(os.path.realpath(cmd_path))
+
+    return None
+
+
 def get_script_path(script_name: str) -> Path | None:
     """Get path to a distrobox script.
 
-    First checks same directory as this script, then PATH.
+    First checks same directory as current command, then PATH.
 
     Args:
         script_name: Name of the script (e.g., "distrobox-init")
@@ -139,10 +164,10 @@ def get_script_path(script_name: str) -> Path | None:
     Returns:
         Path to script or None if not found
     """
-    # First check relative to main distrobox binary
-    distrobox_path = shutil.which("distrobox")
-    if distrobox_path:
-        same_dir = Path(distrobox_path).parent / script_name
+    # First check relative to current command binary
+    cmd_path = get_command_path()
+    if cmd_path:
+        same_dir = cmd_path.parent / script_name
         if same_dir.exists():
             return same_dir
 

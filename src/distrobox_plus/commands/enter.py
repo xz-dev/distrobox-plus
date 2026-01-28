@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from ..utils import (
     print_status,
     yellow,
     red,
+    get_command_path,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +131,9 @@ def generate_enter_command(
         List of command arguments
     """
     user, home, _ = get_user_info()
-    distrobox_enter_path = shutil.which("distrobox-enter") or ""
+    # Get path to current command for DISTROBOX_ENTER_PATH env var
+    cmd_path = get_command_path()
+    distrobox_enter_path = str(cmd_path) if cmd_path else ""
 
     cmd = ["exec", "--interactive", "--detach-keys="]
 
@@ -397,22 +399,13 @@ def run(args: list[str] | None = None) -> int:
                 print("Exiting.", file=sys.stderr)
                 return 1
 
-        # Create the container
-        create_cmd = ["distrobox-create", "--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
-        if config.rootful:
-            create_cmd.insert(1, "--root")
-
+        # Create the container using built-in create command
         print(f"Creating container {container_name}...", file=sys.stderr)
-        create_script = shutil.which("distrobox-create")
-        if create_script:
-            subprocess.run(create_cmd)
-        else:
-            # Use our own create command
-            from .create import run as create_run
-            create_args = ["--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
-            if config.rootful:
-                create_args.insert(0, "--root")
-            create_run(create_args)
+        from .create import run as create_run
+        create_args = ["--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
+        if config.rootful:
+            create_args.insert(0, "--root")
+        create_run(create_args)
 
         # Refresh status
         status = manager.get_status(container_name)
