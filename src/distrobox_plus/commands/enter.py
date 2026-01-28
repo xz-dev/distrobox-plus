@@ -165,8 +165,12 @@ def generate_enter_command(
     for key, value in filter_env_for_container().items():
         cmd.append(f"--env={key}={value}")
 
-    # PATH handling
-    path_value = build_container_path(os.environ.get("PATH", ""), clean_path)
+    # PATH handling - use container_path like original distrobox
+    path_value = build_container_path(
+        os.environ.get("PATH", ""),
+        container_path,
+        clean_path,
+    )
     cmd.append(f"--env=PATH={path_value}")
 
     # XDG_DATA_DIRS

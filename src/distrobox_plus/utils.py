@@ -347,27 +347,43 @@ def get_standard_paths() -> list[str]:
     ]
 
 
-def build_container_path(host_path: str, clean: bool = False) -> str:
+def build_container_path(
+    host_path: str,
+    container_path: str = "",
+    clean: bool = False,
+) -> str:
     """Build PATH for container entry.
+
+    Matches original distrobox-enter behavior:
+    - clean=True: container_path + standard FHS paths
+    - clean=False: host_path + container_path + missing standard paths
 
     Args:
         host_path: Host PATH value
-        clean: If True, use only standard paths
+        container_path: Container's configured PATH (from inspect)
+        clean: If True, use only container_path + standard paths
 
     Returns:
         PATH value for container
     """
     standard = get_standard_paths()
+    host_parts = host_path.split(":") if host_path else []
 
     if clean:
-        return ":".join(standard)
+        # Original: container_path + standard paths (not in container_path)
+        result_parts = container_path.split(":") if container_path else []
+        for path in standard:
+            if path not in result_parts:
+                result_parts.append(path)
+        return ":".join(result_parts) if result_parts else ":".join(standard)
 
-    # Collect standard paths not in host PATH
-    additional = []
+    # Collect: container_path + standard paths not in host PATH
+    additional_parts = container_path.split(":") if container_path else []
     for path in standard:
-        if path not in host_path.split(":"):
-            additional.append(path)
+        if path not in host_parts:
+            if path not in additional_parts:
+                additional_parts.append(path)
 
-    if additional:
-        return f"{host_path}:{':'.join(additional)}"
+    if additional_parts:
+        return f"{host_path}:{':'.join(additional_parts)}"
     return host_path
