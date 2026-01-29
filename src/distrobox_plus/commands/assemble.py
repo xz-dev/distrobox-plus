@@ -132,7 +132,8 @@ class ManifestParser:
             key, value = line.split('=', 1)
             # Shell uses: tr -d ' ' which removes ALL spaces from key
             key = key.replace(' ', '')
-            value = value.strip()
+            # Shell: cut -d'=' -f2- does NOT strip value
+            # Line trailing spaces already removed by rstrip() above
 
             # Normalize booleans
             if value == "true":
@@ -175,7 +176,8 @@ class ManifestParser:
         def resolve(name: str, stack: list[str]) -> dict[str, list[str]]:
             # Check for circular reference
             if name in stack:
-                stack_str = "¤".join(f"[{s}]" for s in stack)
+                # Shell format: newest first, e.g. [c]¤[b]¤[a]
+                stack_str = "¤".join(f"[{s}]" for s in reversed(stack))
                 raise ValueError(
                     f"circular reference detected: including [{name}] again after {stack_str}"
                 )
@@ -239,7 +241,7 @@ class ManifestParser:
             for key in ("image", "clone", "home", "hostname", "exported_bins_path"):
                 if key in values and values[key]:
                     val = values[key][-1]  # Take last value
-                    val = val.strip('"\'')
+                    val = _strip_quotes(val)
                     setattr(spec, key, val)
 
             # Boolean values
@@ -250,19 +252,19 @@ class ManifestParser:
 
             # Multi-value keys
             if "volume" in values:
-                spec.volumes = [v.strip('"\'') for v in values["volume"]]
+                spec.volumes = [_strip_quotes(v) for v in values["volume"]]
             if "additional_packages" in values:
-                spec.additional_packages = [v.strip('"\'') for v in values["additional_packages"]]
+                spec.additional_packages = [_strip_quotes(v) for v in values["additional_packages"]]
             if "additional_flags" in values:
-                spec.additional_flags = [v.strip('"\'') for v in values["additional_flags"]]
+                spec.additional_flags = [_strip_quotes(v) for v in values["additional_flags"]]
             if "init_hooks" in values:
                 spec.init_hooks = values["init_hooks"]
             if "pre_init_hooks" in values:
                 spec.pre_init_hooks = values["pre_init_hooks"]
             if "exported_apps" in values:
-                spec.exported_apps = [v.strip('"\'') for v in values["exported_apps"]]
+                spec.exported_apps = [_strip_quotes(v) for v in values["exported_apps"]]
             if "exported_bins" in values:
-                spec.exported_bins = [v.strip('"\'') for v in values["exported_bins"]]
+                spec.exported_bins = [_strip_quotes(v) for v in values["exported_bins"]]
 
             specs[name] = spec
 
@@ -355,16 +357,27 @@ def _download_file(url: str, timeout: int = 3) -> str | None:
         return None
 
 
+def _strip_quotes(value: str) -> str:
+    """Strip surrounding quotes if they form a matching pair.
+
+    Matches shell quote parsing behavior - only removes quotes
+    if they form a complete pair (both start and end with same quote).
+    """
+    if len(value) >= 2:
+        if value.startswith('"') and value.endswith('"'):
+            return value[1:-1]
+        if value.startswith("'") and value.endswith("'"):
+            return value[1:-1]
+    return value
+
+
 def _encode_variable(value: str) -> str:
     """Encode value in base64, stripping surrounding quotes.
 
     Matches original encode_variable() function.
     """
     # Remove surrounding quotes
-    if value.startswith('"') and value.endswith('"'):
-        value = value[1:-1]
-    elif value.startswith("'") and value.endswith("'"):
-        value = value[1:-1]
+    value = _strip_quotes(value)
 
     return base64.b64encode(value.encode()).decode()
 
@@ -617,6 +630,7 @@ def run(args: list[str] | None = None) -> int:
             print(f" - Deleting {name}...")
 
             if not parsed.dry_run:
+                # Shell: > /dev/null || : (ignore errors)
                 rm_run([*root_args, "-f", name])
 
             if delete:
@@ -641,8 +655,9 @@ def run(args: list[str] | None = None) -> int:
         create_args = _build_create_args(spec, config.verbose)
 
         if parsed.dry_run:
-            # Print command (match shell format)
-            print(f"distrobox-create {' '.join(create_args)}")
+            # Print command matching shell format: sanitize each arg
+            sanitized_args = [_sanitize_variable(arg) for arg in create_args]
+            print(f"distrobox-create {' '.join(sanitized_args)}")
             continue
 
         result = create_run(create_args)

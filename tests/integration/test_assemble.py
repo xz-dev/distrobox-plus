@@ -13,6 +13,7 @@ from distrobox_plus.commands.assemble import (
     _decode_hooks,
     _encode_variable,
     _sanitize_variable,
+    _strip_quotes,
     create_parser,
 )
 
@@ -413,6 +414,53 @@ class TestSanitizeVariable:
         """Test that already quoted values are unchanged."""
         result = _sanitize_variable('"already quoted"')
         assert result == '"already quoted"'
+
+
+class TestStripQuotes:
+    """Test _strip_quotes function (shell quote parsing compatibility)."""
+
+    @pytest.mark.fast
+    def test_strip_double_quotes(self):
+        """Test stripping matching double quotes."""
+        assert _strip_quotes('"hello"') == "hello"
+
+    @pytest.mark.fast
+    def test_strip_single_quotes(self):
+        """Test stripping matching single quotes."""
+        assert _strip_quotes("'hello'") == "hello"
+
+    @pytest.mark.fast
+    def test_unmatched_start_double_quote(self):
+        """Test that unmatched starting double quote is preserved."""
+        assert _strip_quotes('"hello') == '"hello'
+
+    @pytest.mark.fast
+    def test_unmatched_end_single_quote(self):
+        """Test that unmatched ending single quote is preserved."""
+        assert _strip_quotes("hello'") == "hello'"
+
+    @pytest.mark.fast
+    def test_no_quotes(self):
+        """Test that values without quotes are unchanged."""
+        assert _strip_quotes("hello") == "hello"
+
+    @pytest.mark.fast
+    def test_empty_quotes(self):
+        """Test stripping empty quoted string."""
+        assert _strip_quotes('""') == ""
+        assert _strip_quotes("''") == ""
+
+    @pytest.mark.fast
+    def test_mismatched_quotes(self):
+        """Test that mismatched quote types are preserved."""
+        assert _strip_quotes("'hello\"") == "'hello\""
+        assert _strip_quotes("\"hello'") == "\"hello'"
+
+    @pytest.mark.fast
+    def test_single_quote_char(self):
+        """Test single quote character is preserved."""
+        assert _strip_quotes('"') == '"'
+        assert _strip_quotes("'") == "'"
 
 
 class TestDecodeHooks:
