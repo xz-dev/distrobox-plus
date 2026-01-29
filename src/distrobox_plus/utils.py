@@ -363,9 +363,6 @@ def filter_env_for_container() -> dict[str, str]:
         "_",
     }
 
-    # Patterns that start with these
-    skip_prefixes = ("XDG_",)
-
     result: dict[str, str] = {}
     for key, value in os.environ.items():
         # Skip if matches pattern

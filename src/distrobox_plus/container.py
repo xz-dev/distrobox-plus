@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from .exceptions import ContainerManagerNotFoundError, InvalidContainerManagerError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -78,6 +79,34 @@ class ContainerManager:
             check=check,
             text=text,
             **kwargs,
+        )
+
+    async def run_async(
+        self,
+        *args: str,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a container manager command asynchronously.
+
+        Args:
+            *args: Command arguments to pass to the container manager
+
+        Returns:
+            CompletedProcess with the result
+        """
+        import asyncio
+
+        cmd = [*self._cmd_prefix, *args]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        return subprocess.CompletedProcess(
+            cmd,
+            proc.returncode or 0,
+            stdout.decode(),
+            stderr.decode(),
         )
 
     def run_interactive(self, *args: str) -> int:
@@ -313,43 +342,35 @@ class ContainerManager:
         result = self.run("container", "commit", container, tag)
         return result.returncode == 0
 
-    def get_container_home(self, name: str) -> str | None:
-        """Get the HOME environment variable from a container.
+    def get_container_env(self, name: str, var: str) -> str | None:
+        """Get an environment variable from a container.
 
         Args:
             name: Container name
+            var: Environment variable name (e.g., "HOME", "PATH")
 
         Returns:
-            HOME path or None
+            Variable value or None
         """
+        prefix = f"{var}="
+        prefix_len = len(prefix)
         format_str = (
             "{{range .Config.Env}}"
-            "{{if and (ge (len .) 5) (eq (slice . 0 5) \"HOME=\")}}"
-            "{{slice . 5}}"
+            f'{{{{if and (ge (len .) {prefix_len}) (eq (slice . 0 {prefix_len}) "{prefix}")}}}}'
+            f"{{{{slice . {prefix_len}}}}}"
             "{{end}}"
             "{{end}}"
         )
         result = self.inspect(name, format_=format_str)
         return result if isinstance(result, str) and result else None
+
+    def get_container_home(self, name: str) -> str | None:
+        """Get the HOME environment variable from a container."""
+        return self.get_container_env(name, "HOME")
 
     def get_container_path(self, name: str) -> str | None:
-        """Get the PATH environment variable from a container.
-
-        Args:
-            name: Container name
-
-        Returns:
-            PATH value or None
-        """
-        format_str = (
-            "{{range .Config.Env}}"
-            "{{if and (ge (len .) 5) (eq (slice . 0 5) \"PATH=\")}}"
-            "{{slice . 5}}"
-            "{{end}}"
-            "{{end}}"
-        )
-        result = self.inspect(name, format_=format_str)
-        return result if isinstance(result, str) and result else None
+        """Get the PATH environment variable from a container."""
+        return self.get_container_env(name, "PATH")
 
     def get_unshare_groups(self, name: str) -> bool:
         """Get the unshare_groups label from a container.
@@ -434,24 +455,19 @@ def detect_container_manager(
         ContainerManager instance
 
     Raises:
-        SystemExit: If no container manager is found
+        InvalidContainerManagerError: If invalid manager specified
+        ContainerManagerNotFoundError: If no container manager is found
     """
     if preferred and preferred != "autodetect":
         if preferred not in SUPPORTED_MANAGERS:
-            print(
-                f"Invalid container manager: {preferred}",
-                file=sys.stderr,
+            raise InvalidContainerManagerError(
+                f"Invalid container manager: {preferred}\n"
+                f"Available choices: 'autodetect', {', '.join(repr(m) for m in SUPPORTED_MANAGERS)}"
             )
-            print(
-                f"Available choices: 'autodetect', {', '.join(repr(m) for m in SUPPORTED_MANAGERS)}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
 
         path = shutil.which(preferred)
         if not path:
-            _print_missing_manager_error()
-            sys.exit(127)
+            raise ContainerManagerNotFoundError(_get_missing_manager_message())
 
         return ContainerManager(
             name=preferred,
@@ -473,18 +489,16 @@ def detect_container_manager(
                 sudo_program=sudo_program,
             )
 
-    _print_missing_manager_error()
-    sys.exit(127)
+    raise ContainerManagerNotFoundError(_get_missing_manager_message())
 
 
-def _print_missing_manager_error() -> None:
-    """Print error message for missing container manager."""
-    print("Missing dependency: we need a container manager.", file=sys.stderr)
-    print("Please install one of podman, docker or lilipod.", file=sys.stderr)
-    print("You can follow the documentation on:", file=sys.stderr)
-    print("\tman distrobox-compatibility", file=sys.stderr)
-    print("or:", file=sys.stderr)
-    print(
-        "\thttps://github.com/89luca89/distrobox/blob/main/docs/compatibility.md",
-        file=sys.stderr,
+def _get_missing_manager_message() -> str:
+    """Get error message for missing container manager."""
+    return (
+        "Missing dependency: we need a container manager.\n"
+        "Please install one of podman, docker or lilipod.\n"
+        "You can follow the documentation on:\n"
+        "\tman distrobox-compatibility\n"
+        "or:\n"
+        "\thttps://github.com/89luca89/distrobox/blob/main/docs/compatibility.md"
     )

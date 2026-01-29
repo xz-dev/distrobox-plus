@@ -13,11 +13,32 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import platformdirs
+from importlib.metadata import version as get_version
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-VERSION = "1.8.2.3"
+
+def _get_version() -> str:
+    """Get version from package metadata (pyproject.toml)."""
+    # Get top-level package name (e.g., "distrobox_plus" from "distrobox_plus.config")
+    pkg = (__package__ or __name__).split(".")[0]
+    try:
+        return get_version(pkg)
+    except Exception:
+        # Development mode: read from pyproject.toml directly
+        import tomllib
+        from pathlib import Path
+
+        pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
+        if pyproject.exists():
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+            return data.get("project", {}).get("version", "unknown")
+        raise
+
+
+VERSION = _get_version()
 DEFAULT_IMAGE = "registry.fedoraproject.org/fedora-toolbox:latest"
 DEFAULT_NAME = "my-distrobox"
 

@@ -1,6 +1,6 @@
 [project]
 name = "distrobox-plus"
-version = "0.1.0"
+version = "1.8.2.3"
 description = "A Python implementation of distrobox for creating and managing containerized development environments"
 authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }

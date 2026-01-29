@@ -9,6 +9,7 @@ import argparse
 import sys
 
 from .config import VERSION
+from .exceptions import DistroboxError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +23,15 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Exit code
     """
+    try:
+        return _main(argv)
+    except DistroboxError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return e.exit_code
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """Internal main function that may raise exceptions."""
     parser = argparse.ArgumentParser(
         prog="distrobox",
         description="Create and manage containerized environments",
