@@ -8,12 +8,11 @@ from rich.console import Console
 from rich.table import Table
 from rich.theme import Theme
 
-# Custom theme matching current colors
+# Custom theme matching distrobox colors
 DISTROBOX_THEME = Theme({
     "ok": "green",
     "error": "bold red",
     "warning": "yellow",
-    "status": "dim",
     "container.running": "green",
     "container.stopped": "yellow",
 })
@@ -35,24 +34,9 @@ def print_err(message: str = "ERR") -> None:
     err_console.print(f" [error][ {message} ][/error]")
 
 
-def print_warning(message: str) -> None:
-    """Print warning message in yellow to stderr."""
-    err_console.print(f"[warning]Warning: {message}[/warning]")
-
-
-def print_error(message: str) -> None:
-    """Print error message in red to stderr."""
-    err_console.print(f"[error]Error: {message}[/error]")
-
-
 def print_status(message: str, end: str = "") -> None:
     """Print status message to stderr."""
     err_console.print(f"{message:<40}", end=end)
-
-
-def green(text: str) -> str:
-    """Return text wrapped in green markup."""
-    return f"[ok]{text}[/ok]"
 
 
 def yellow(text: str) -> str:
