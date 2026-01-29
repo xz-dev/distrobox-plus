@@ -170,25 +170,50 @@ class ManifestParser:
         self,
         raw_sections: dict[str, dict[str, list[str]]],
     ) -> dict[str, dict[str, list[str]]]:
-        """Resolve include directives with cycle detection."""
+        """Resolve include directives with cycle detection.
+
+        Uses accumulated include_stack per section (matching shell behavior).
+        Shell clears include_stack at each section start, then accumulates
+        all included definitions. This prevents including the same definition
+        twice within a section's inheritance chain (including diamond inheritance).
+        """
         resolved: dict[str, dict[str, list[str]]] = {}
 
-        def resolve(name: str, stack: list[str]) -> dict[str, list[str]]:
-            # Check for circular reference
-            if name in stack:
+        def resolve_section(name: str) -> dict[str, list[str]]:
+            """Resolve a top-level section (starts with empty include_stack)."""
+            result, _ = resolve_includes(name, [])
+            return result
+
+        def resolve_includes(
+            name: str,
+            include_stack: list[str],
+        ) -> tuple[dict[str, list[str]], list[str]]:
+            """Resolve includes for a section.
+
+            Args:
+                name: Section name to resolve
+                include_stack: Accumulated list of already-included sections
+                              (shell uses string with ¤ separator, we use list)
+                              Note: does NOT include the top-level section being resolved
+
+            Returns:
+                Tuple of (resolved values dict, updated include_stack)
+            """
+            # Check for circular/duplicate reference (shell: expr match on stack)
+            # Shell checks BEFORE adding to stack
+            if name in include_stack:
                 # Shell format: newest first, e.g. [c]¤[b]¤[a]
-                stack_str = "¤".join(f"[{s}]" for s in reversed(stack))
+                stack_str = "¤".join(f"[{s}]" for s in include_stack)
                 raise ValueError(
                     f"circular reference detected: including [{name}] again after {stack_str}"
                 )
 
-            # Return cached if already resolved
-            if name in resolved:
-                return {k: list(v) for k, v in resolved[name].items()}
-
             # Check if section exists
             if name not in raw_sections:
                 raise ValueError(f"cannot include '{name}': definition not found")
+
+            # Add to include stack AFTER check (shell: include_stack="[${value}]¤${include_stack}")
+            include_stack = [name] + include_stack
 
             raw = raw_sections[name]
             result: dict[str, list[str]] = {}
@@ -198,7 +223,7 @@ class ManifestParser:
                 # Shell uses: tr -d '"' which removes ALL double quotes
                 # (not just leading/trailing, and not single quotes)
                 include_name = include_name.replace('"', '')
-                base = resolve(include_name, stack + [name])
+                base, include_stack = resolve_includes(include_name, include_stack)
                 for key, values in base.items():
                     if key == "include":
                         continue
@@ -217,13 +242,12 @@ class ManifestParser:
                 else:
                     result[key] = list(values)
 
-            resolved[name] = result
-            return {k: list(v) for k, v in result.items()}
+            return result, include_stack
 
-        # Resolve all sections
+        # Resolve all sections (each starts with empty include_stack, matching shell)
         for name in raw_sections:
             if name not in resolved:
-                resolve(name, [])
+                resolved[name] = resolve_section(name)
 
         return resolved
 
@@ -630,7 +654,8 @@ def run(args: list[str] | None = None) -> int:
             print(f" - Deleting {name}...")
 
             if not parsed.dry_run:
-                # Shell: > /dev/null || : (ignore errors)
+                # Shell: > /dev/null || : (ignore errors, suppress output)
+                # rm_run returns exit code, we ignore it to match shell behavior
                 rm_run([*root_args, "-f", name])
 
             if delete:

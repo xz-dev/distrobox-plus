@@ -295,6 +295,35 @@ include=nonexistent
         assert "nonexistent" in str(exc_info.value)
 
     @pytest.mark.fast
+    def test_diamond_inheritance_detection(self):
+        """Test that diamond inheritance is detected as circular (shell compatibility).
+
+        Shell's include_stack is accumulated per section, so if A includes B and C,
+        and C also includes B, the second B is detected as a duplicate/circular reference.
+        This matches the original shell script behavior.
+        """
+        content = """\
+[base]
+image=alpine:latest
+
+[dev]
+include=base
+nvidia=true
+
+[prod]
+include=base
+include=dev
+"""
+        parser = ManifestParser(content)
+
+        # Shell would error here because [base] is included twice in [prod]'s chain
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse()
+
+        assert "circular reference" in str(exc_info.value).lower()
+        assert "base" in str(exc_info.value)
+
+    @pytest.mark.fast
     def test_include_with_quoted_name(self):
         """Test include with quoted section name (shell compatibility).
 
