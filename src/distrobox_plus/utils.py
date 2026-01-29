@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import os
 import re
 import shutil
@@ -156,7 +157,10 @@ def get_command_path() -> Path | None:
 def get_script_path(script_name: str) -> Path | None:
     """Get path to a distrobox script.
 
-    First checks same directory as current command, then PATH.
+    Checks in order:
+    1. Bundled scripts in the package
+    2. Same directory as current command
+    3. System PATH
 
     Args:
         script_name: Name of the script (e.g., "distrobox-init")
@@ -164,7 +168,20 @@ def get_script_path(script_name: str) -> Path | None:
     Returns:
         Path to script or None if not found
     """
-    # First check relative to current command binary
+    # First check bundled scripts in the package
+    try:
+        from . import scripts
+
+        files = importlib.resources.files(scripts)
+        script_file = files.joinpath(script_name)
+        # Check if the script exists in the package
+        with importlib.resources.as_file(script_file) as path:
+            if path.exists():
+                return Path(path)
+    except (ImportError, TypeError, FileNotFoundError):
+        pass
+
+    # Then check relative to current command binary
     cmd_path = get_command_path()
     if cmd_path:
         same_dir = cmd_path.parent / script_name
