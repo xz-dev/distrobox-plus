@@ -142,7 +142,7 @@ def _upgrade_container(
         Exit code
     """
     # Print upgrade message in red bold like original (rich handles TTY detection)
-    print_error(f"[error] Upgrading {container}...[/error]")
+    print_error(red(f" Upgrading {container}..."))
 
     # Build the upgrade command
     # Original: command -v su-exec && su-exec root /usr/bin/entrypoint --upgrade ||

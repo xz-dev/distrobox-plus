@@ -780,9 +780,9 @@ def _resolve_hostname(
 
     if not validate_hostname(hostname):
         print_error(
-            f"[error]Error: Invalid hostname '{hostname}', longer than 64 characters[/error]"
+            f"[error]ERROR: Invalid hostname '{hostname}', longer than 64 characters[/error]"
         )
-        print_error("Use --hostname argument to set it manually")
+        print_error("ERROR: Use --hostname argument to set it manually")
         return None
 
     return hostname
@@ -869,7 +869,7 @@ def _handle_clone(
         Clone image name if successful, None if failed
     """
     if not manager.is_podman and not manager.is_docker:
-        print_error("[error]Error: clone is only supported with docker and podman[/error]")
+        print_error("[error]ERROR: clone is only supported with docker and podman[/error]")
         return None
     return get_clone_image(manager, opts.clone)
 
@@ -946,7 +946,7 @@ def _execute_create(
         return 0
     else:
         print_error(red("[ ERR ]"))
-        print_error(red("Failed to create container."))
+        print_error(red("failed to create container."))
         if result.stderr:
             print_error(result.stderr)
         return result.returncode

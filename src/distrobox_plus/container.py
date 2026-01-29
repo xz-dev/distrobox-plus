@@ -461,8 +461,8 @@ def detect_container_manager(
     if preferred and preferred != "autodetect":
         if preferred not in SUPPORTED_MANAGERS:
             raise InvalidContainerManagerError(
-                f"Invalid container manager: {preferred}\n"
-                f"Available choices: 'autodetect', {', '.join(repr(m) for m in SUPPORTED_MANAGERS)}"
+                f"Invalid input {preferred}.\n"
+                f"The available choices are: 'autodetect', {', '.join(repr(m) for m in SUPPORTED_MANAGERS)}"
             )
 
         path = shutil.which(preferred)

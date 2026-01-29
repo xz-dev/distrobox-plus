@@ -226,7 +226,7 @@ def wait_for_container_setup(
         # Check container is still running
         status = manager.get_status(container_name)
         if status != "running":
-            print_error(f"\n{red('Container Setup Failure!')}")
+            print_error(f"\n{red('Error: could not start entrypoint.')}")
             return False
 
         # Start logs process

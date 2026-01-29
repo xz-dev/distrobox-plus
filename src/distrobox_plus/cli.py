@@ -121,7 +121,7 @@ def _main(argv: list[str] | None = None) -> int:
             return run(args)
 
         case _:
-            print_error(red(f"Error: Unknown command '{command}'"))
+            print_error(red("Error: invalid command"))
             parser.print_help(sys.stderr)
             return 1
 
