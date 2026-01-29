@@ -335,24 +335,28 @@ def run(args: list[str] | None = None) -> int:
                 print("Aborted.")
                 return 0
 
-        # Delete containers, checking running status for each
+        # Collect running containers first
+        running_containers = [
+            name for name in container_names
+            if manager.is_running(name)
+        ]
+
+        # If there are running containers, ask once for all of them
+        if running_containers and not config.non_interactive and not force:
+            running_str = " ".join(running_containers)
+            if prompt_yes_no(
+                f"Containers {running_str} are running, do you want to force delete them?",
+                default=True,
+            ):
+                force = True
+            # If user refuses, continue without force flag - running containers will fail to delete
+
+        # Delete containers
         for name in container_names:
-            container_force = force
-
-            # If container is running and not already forcing, ask for this specific container
-            if not config.non_interactive and not force and manager.is_running(name):
-                if not prompt_yes_no(
-                    f"Container {name} running, do you want to force delete them?",
-                    default=True,
-                ):
-                    print(f"Skipping {name}.")
-                    continue
-                container_force = True
-
             delete_container(
                 manager,
                 name,
-                force=container_force,
+                force=force,
                 rm_home=config.container_rm_custom_home,
                 non_interactive=config.non_interactive,
                 verbose=config.verbose,
