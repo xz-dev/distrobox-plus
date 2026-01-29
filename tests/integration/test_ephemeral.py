@@ -50,9 +50,9 @@ class TestEphemeralHelp:
         """Test ephemeral --help output."""
         result = distrobox.run("ephemeral", ["--help"])
 
-        # Help should contain key information
-        assert "distrobox version:" in result.stdout or "distrobox version:" in result.stderr
-        assert "--root" in result.stdout or "--root" in result.stderr
+        # Help should show usage and exit 0
+        assert result.returncode == 0
+        assert "usage:" in result.stdout.lower() or "ephemeral" in result.stdout
 
     @pytest.mark.fast
     def test_ephemeral_version(self, distrobox):

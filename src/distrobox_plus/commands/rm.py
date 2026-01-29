@@ -8,14 +8,13 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
 from ..container import detect_container_manager
-from ..utils import get_script_path, prompt_yes_no, InvalidInputError
+from ..utils import prompt_yes_no, InvalidInputError
 from .list import list_containers
 
 if TYPE_CHECKING:
@@ -171,17 +170,15 @@ def run_generate_entry_delete(container_name: str, verbose: bool = False) -> Non
         container_name: Name of the container
         verbose: Enable verbose output
     """
-    script = get_script_path("distrobox-generate-entry")
-    if not script:
-        return
+    from .generate_entry import run as generate_entry_run
 
-    cmd = [str(script), container_name, "--delete"]
+    args = [container_name, "--delete"]
     if verbose:
-        cmd.append("--verbose")
+        args.append("--verbose")
 
     try:
-        subprocess.run(cmd, capture_output=True)
-    except (OSError, subprocess.SubprocessError):
+        generate_entry_run(args)
+    except Exception:
         pass
 
 

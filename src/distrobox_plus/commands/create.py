@@ -914,9 +914,11 @@ def _execute_create(
 
         # Generate desktop entry
         if not config.rootful and not opts.no_entry:
-            genentry = get_script_path("distrobox-generate-entry")
-            if genentry:
-                subprocess.run([str(genentry), opts.name], capture_output=True)
+            from .generate_entry import run as generate_entry_run
+            try:
+                generate_entry_run([opts.name])
+            except Exception:
+                pass
 
         return 0
     else:
