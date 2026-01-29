@@ -21,6 +21,7 @@ Choose one of the available commands:
     list | ls
     rm
     stop
+    upgrade
     version
     help
 """
@@ -83,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
 
         case "rm":
             from .commands.rm import run
+            return run(args)
+
+        case "upgrade":
+            from .commands.upgrade import run
             return run(args)
 
         case "-V" | "--version" | "version":

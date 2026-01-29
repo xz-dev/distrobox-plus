@@ -38,6 +38,7 @@ markers = [
     "list: tests for distrobox-list command",
     "stop: tests for distrobox-stop command",
     "rm: tests for distrobox-rm command",
+    "upgrade: tests for distrobox-upgrade command",
 ]
 # Skip slow tests by default
 addopts = "-m 'not slow'"
