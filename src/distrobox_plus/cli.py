@@ -13,6 +13,7 @@ HELP_TEXT = f"""\
 distrobox version: {VERSION}
 
 Choose one of the available commands:
+    assemble
     create
     enter
     ephemeral
@@ -54,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
     args = argv[1:]
 
     match command:
+        case "assemble":
+            from .commands.assemble import run
+            return run(args)
+
         case "create":
             from .commands.create import run
             return run(args)

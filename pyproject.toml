@@ -30,6 +30,7 @@ markers = [
     "fast: marks tests as fast (< 5 seconds, no container creation)",
     "slow: marks tests as slow (> 30 seconds, full container lifecycle)",
     "integration: marks tests as requiring real container operations",
+    "assemble: tests for distrobox-assemble command",
     "create: tests for distrobox-create command",
     "enter: tests for distrobox-enter command",
     "ephemeral: tests for distrobox-ephemeral command",
