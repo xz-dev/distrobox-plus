@@ -11,8 +11,8 @@ import sys
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, check_sudo_doas
-from ..console import console, create_container_table
 from ..container import detect_container_manager
+from ..utils.console import console, print_msg, create_container_table
 
 if TYPE_CHECKING:
     from ..container import ContainerManager

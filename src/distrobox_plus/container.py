@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .exceptions import ContainerManagerNotFoundError, InvalidContainerManagerError
+from .utils.exceptions import ContainerManagerNotFoundError, InvalidContainerManagerError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

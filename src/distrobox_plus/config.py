@@ -64,7 +64,7 @@ def get_config_paths() -> list[Path]:
     # Get the directory of the command itself (for NixOS compatibility)
     # Original: self_dir="$(dirname "$(realpath "$0")")"
     # Original: nix_config_file="${self_dir}/../share/distrobox/distrobox.conf"
-    from .utils import get_command_path
+    from .utils.helpers import get_command_path
     self_path = get_command_path()
     if self_path:
         nix_config = self_path.parent.parent / "share" / "distrobox" / "distrobox.conf"

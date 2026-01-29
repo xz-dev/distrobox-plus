@@ -72,7 +72,7 @@ def get_command_path() -> Path | None:
     Returns:
         Path to the command binary or None if not found
     """
-    from . import COMMAND_NAME
+    from .. import COMMAND_NAME
 
     # First try sys.argv[0] if it's an absolute path
     if sys.argv and os.path.isabs(sys.argv[0]):
@@ -104,7 +104,7 @@ def get_script_path(script_name: str) -> Path | None:
     """
     # First check bundled scripts in the package
     try:
-        from . import scripts
+        from .. import scripts
 
         files = importlib.resources.files(scripts)
         script_file = files.joinpath(script_name)

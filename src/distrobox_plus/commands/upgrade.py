@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, check_sudo_doas
-from ..console import err_console
 from ..container import detect_container_manager
+from ..utils.console import print_error, red
 from .list import list_containers
 
 if TYPE_CHECKING:
@@ -75,11 +75,11 @@ def _print_sudo_error() -> int:
     """Print error message when running via sudo/doas."""
     prog_name = Path(sys.argv[0]).name
     orig_args = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""
-    err_console.print(
+    print_error(
         f"Running {prog_name} via SUDO/DOAS is not supported. "
         f"Instead, please try running:"
     )
-    err_console.print(f"  {prog_name} --root {orig_args}")
+    print_error(f"  {prog_name} --root {orig_args}")
     return 1
 
 
@@ -142,7 +142,7 @@ def _upgrade_container(
         Exit code
     """
     # Print upgrade message in red bold like original (rich handles TTY detection)
-    err_console.print(f"[error] Upgrading {container}...[/error]")
+    print_error(f"[error] Upgrading {container}...[/error]")
 
     # Build the upgrade command
     # Original: command -v su-exec && su-exec root /usr/bin/entrypoint --upgrade ||
@@ -230,7 +230,7 @@ def run(args: list[str] | None = None) -> int:
     # Check if we have containers to upgrade
     # Original behavior: only error if not using --all and no containers specified
     if not container_names and not parsed.all:
-        err_console.print("Please specify the name of the container.")
+        print_error("Please specify the name of the container.")
         return 1
 
     # If --all but no containers found, just exit successfully (nothing to upgrade)

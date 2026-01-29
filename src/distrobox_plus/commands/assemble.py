@@ -15,8 +15,8 @@ from urllib.request import urlopen
 from urllib.error import URLError
 
 from ..config import VERSION, Config, check_sudo_doas
-from ..console import console, err_console
 from ..container import detect_container_manager
+from ..utils.console import print_msg, print_error, red
 
 
 @dataclass
@@ -353,8 +353,8 @@ Usage:
 
 def _print_sudo_error() -> int:
     """Print error message when running via sudo/doas."""
-    err_console.print(f"Running {sys.argv[0]} via SUDO/DOAS is not supported.")
-    err_console.print("Instead, please try using root=true property in the distrobox.ini file.")
+    print_error(f"Running {sys.argv[0]} via SUDO/DOAS is not supported.")
+    print_error("Instead, please try using root=true property in the distrobox.ini file.")
     return 1
 
 
@@ -595,7 +595,7 @@ def run(args: list[str] | None = None) -> int:
 
     # Validate action
     if parsed.action is None:
-        err_console.print("Please specify create or rm.")
+        print_error("Please specify create or rm.")
         parser.print_help()
         return 1
 
@@ -615,7 +615,7 @@ def run(args: list[str] | None = None) -> int:
     else:
         content = _download_file(input_file)
         if content is None:
-            err_console.print(f"[error]File {input_file} does not exist.[/error]")
+            print_error(f"[error]File {input_file} does not exist.[/error]")
             return 1
 
     # Parse manifest
@@ -623,7 +623,7 @@ def run(args: list[str] | None = None) -> int:
         mp = ManifestParser(content)
         specs = mp.parse()
     except ValueError as e:
-        err_console.print(f"[error]ERROR {e}[/error]")
+        print_error(f"[error]ERROR {e}[/error]")
         return 1
 
     # Filter by name if specified
@@ -646,7 +646,7 @@ def run(args: list[str] | None = None) -> int:
 
         # Delete or replace
         if delete or parsed.replace:
-            console.print(f" - Deleting {name}...")
+            print_msg(f" - Deleting {name}...")
 
             if not parsed.dry_run:
                 # Shell: > /dev/null || : (ignore errors, suppress output)
@@ -657,7 +657,7 @@ def run(args: list[str] | None = None) -> int:
                 continue
 
         # Create
-        console.print(f" - Creating {name}...")
+        print_msg(f" - Creating {name}...")
 
         # Check if exists (unless dry-run)
         if not parsed.dry_run:
@@ -668,7 +668,7 @@ def run(args: list[str] | None = None) -> int:
                 sudo_program=config.sudo_program,
             )
             if manager.exists(name):
-                err_console.print(f"{name} already exists")
+                print_error(f"{name} already exists")
                 continue
 
         # Build create args

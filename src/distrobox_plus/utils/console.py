@@ -24,18 +24,18 @@ console = Console(theme=DISTROBOX_THEME)
 err_console = Console(stderr=True, theme=DISTROBOX_THEME)
 
 
-def print_ok(message: str = "OK") -> None:
-    """Print OK status in green to stderr."""
-    err_console.print(f" [ok][ {message} ][/ok]")
+def print_msg(message: str) -> None:
+    """Print message to stdout."""
+    console.print(message)
 
 
-def print_err(message: str = "ERR") -> None:
-    """Print error status in red to stderr."""
-    err_console.print(f" [error][ {message} ][/error]")
+def print_error(message: str, end: str = "\n") -> None:
+    """Print message to stderr."""
+    err_console.print(message, end=end)
 
 
 def print_status(message: str, end: str = "") -> None:
-    """Print status message to stderr."""
+    """Print status message to stderr (padded, no newline by default)."""
     err_console.print(f"{message:<40}", end=end)
 
 
@@ -47,6 +47,11 @@ def yellow(text: str) -> str:
 def red(text: str) -> str:
     """Return text wrapped in red/error markup."""
     return f"[error]{text}[/error]"
+
+
+def green(text: str) -> str:
+    """Return text wrapped in green/ok markup."""
+    return f"[ok]{text}[/ok]"
 
 
 def create_container_table() -> Table:
