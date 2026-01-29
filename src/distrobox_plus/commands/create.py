@@ -26,6 +26,7 @@ from ..config import (
     get_user_info,
 )
 from ..container import USERNS_SIZE, detect_container_manager
+from ..console import err_console, print_err, print_ok
 from ..utils import (
     derive_container_name,
     file_exists,
@@ -37,8 +38,6 @@ from ..utils import (
     InvalidInputError,
     is_symlink,
     mkdir_p,
-    print_err,
-    print_ok,
     prompt_yes_no,
     remove_trailing_slashes,
     validate_hostname,
@@ -128,9 +127,8 @@ def show_compatibility() -> int:
         # Check connectivity first
         urlopen("https://github.com", timeout=5)
     except URLError:
-        print(
-            "ERROR: no cache file and no connectivity found, cannot retrieve compatibility list.",
-            file=sys.stderr,
+        err_console.print(
+            "[error]ERROR: no cache file and no connectivity found, cannot retrieve compatibility list.[/error]"
         )
         return 1
 
@@ -138,7 +136,7 @@ def show_compatibility() -> int:
         with urlopen(url, timeout=30) as response:
             content = response.read().decode("utf-8")
     except URLError as e:
-        print(f"ERROR: failed to fetch compatibility list: {e}", file=sys.stderr)
+        err_console.print(f"[error]ERROR: failed to fetch compatibility list: {e}[/error]")
         return 1
 
     images = _parse_image_list(content)
@@ -394,28 +392,26 @@ def get_clone_image(manager: ContainerManager, clone_name: str) -> str | None:
     # Check container exists and is stopped
     status = manager.get_status(clone_name)
     if status is None:
-        print(f"Container {clone_name} not found.", file=sys.stderr)
+        err_console.print(f"Container {clone_name} not found.")
         return None
 
     if status == "running":
-        print(f"Container {clone_name} is running.", file=sys.stderr)
-        print(
-            "Please stop it first. Cannot clone a running container.", file=sys.stderr
-        )
+        err_console.print(f"Container {clone_name} is running.")
+        err_console.print("Please stop it first. Cannot clone a running container.")
         return None
 
     # Get container ID
     container_id = manager.inspect(clone_name, format_="{{.ID}}")
     if not container_id:
-        print(f"Cannot get ID for container {clone_name}", file=sys.stderr)
+        err_console.print(f"Cannot get ID for container {clone_name}")
         return None
 
     # Create commit tag
     commit_tag = f"{clone_name}:{date.today().isoformat()}".lower()
 
-    print(f"Duplicating {clone_name}...", file=sys.stderr)
+    err_console.print(f"Duplicating {clone_name}...")
     if not manager.commit(str(container_id), commit_tag):
-        print(f"Cannot clone container: {clone_name}", file=sys.stderr)
+        err_console.print(f"Cannot clone container: {clone_name}")
         return None
 
     return commit_tag
@@ -469,7 +465,9 @@ def _add_environment_vars(
     )
 
 
-def _add_distrobox_volumes(cmd: list[str], home: str) -> tuple[Path | None, Path | None, Path | None]:
+def _add_distrobox_volumes(
+    cmd: list[str], home: str
+) -> tuple[Path | None, Path | None, Path | None]:
     """Add distrobox script volumes.
 
     Returns:
@@ -480,7 +478,7 @@ def _add_distrobox_volumes(cmd: list[str], home: str) -> tuple[Path | None, Path
     hostexec_path = get_script_path("distrobox-host-exec")
 
     if not entrypoint_path or not export_path:
-        print("Error: distrobox-init or distrobox-export not found", file=sys.stderr)
+        err_console.print("[error]Error: distrobox-init or distrobox-export not found[/error]")
         sys.exit(127)
 
     cmd.append("--volume=/tmp:/tmp:rslave")
@@ -516,7 +514,9 @@ def _add_device_mounts(cmd: list[str], opts: CreateOptions) -> None:
         cmd.append("--volume=/sys:/sys:rslave")
 
 
-def _add_init_mounts(cmd: list[str], opts: CreateOptions, manager: ContainerManager) -> None:
+def _add_init_mounts(
+    cmd: list[str], opts: CreateOptions, manager: ContainerManager
+) -> None:
     """Add init system support mounts (tmpfs for /run, /run/lock, etc)."""
     if opts.init and manager.is_docker:
         cmd.append("--cgroupns=host")
@@ -575,7 +575,7 @@ def _add_home_mounts(
     if opts.custom_home:
         if not Path(opts.custom_home).exists():
             if not mkdir_p(opts.custom_home):
-                print(f"Cannot create {opts.custom_home}", file=sys.stderr)
+                err_console.print(f"[error]Cannot create {opts.custom_home}[/error]")
                 sys.exit(1)
         cmd.append(f"--env=HOME={opts.custom_home}")
         cmd.append(f"--env=DISTROBOX_HOST_HOME={home}")
@@ -727,14 +727,8 @@ def generate_create_command(
 
 def _print_sudo_error() -> int:
     """Print error message when running via sudo/doas."""
-    print(
-        f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
-        file=sys.stderr,
-    )
-    print(
-        f"Instead, please try running:\n  {sys.argv[0]} --root",
-        file=sys.stderr,
-    )
+    err_console.print(f"Running {sys.argv[0]} via SUDO/DOAS is not supported.")
+    err_console.print(f"Instead, please try running:\n  {sys.argv[0]} --root")
     return 1
 
 
@@ -785,11 +779,10 @@ def _resolve_hostname(
         hostname = f"{name}.{hostname}"
 
     if not validate_hostname(hostname):
-        print(
-            f"Error: Invalid hostname '{hostname}', longer than 64 characters",
-            file=sys.stderr,
+        err_console.print(
+            f"[error]Error: Invalid hostname '{hostname}', longer than 64 characters[/error]"
         )
-        print("Use --hostname argument to set it manually", file=sys.stderr)
+        err_console.print("Use --hostname argument to set it manually")
         return None
 
     return hostname
@@ -876,20 +869,18 @@ def _handle_clone(
         Clone image name if successful, None if failed
     """
     if not manager.is_podman and not manager.is_docker:
-        print(
-            "Error: clone is only supported with docker and podman", file=sys.stderr
-        )
+        err_console.print("[error]Error: clone is only supported with docker and podman[/error]")
         return None
     return get_clone_image(manager, opts.clone)
 
 
 def _print_enter_hint(name: str, rootful: bool) -> None:
     """Print hint message for entering the container."""
-    print("To enter, run:\n")
+    err_console.print("To enter, run:\n")
     if rootful and os.getuid() != 0:
-        print(f"distrobox enter --root {name}\n")
+        err_console.print(f"distrobox enter --root {name}\n")
     else:
-        print(f"distrobox enter {name}\n")
+        err_console.print(f"distrobox enter {name}\n")
 
 
 def _ensure_image(
@@ -906,20 +897,18 @@ def _ensure_image(
         return True
 
     if not config.non_interactive and not opts.pull:
-        print(f"Image {opts.image} not found.", file=sys.stderr)
+        err_console.print(f"Image {opts.image} not found.")
         try:
             if not prompt_yes_no("Do you want to pull the image now?"):
-                print(
-                    f"Next time, run: {manager.name} pull {opts.image}", file=sys.stderr
-                )
+                err_console.print(f"Next time, run: {manager.name} pull {opts.image}")
                 return False
         except InvalidInputError as e:
-            print(e, file=sys.stderr)
-            print("Exiting.", file=sys.stderr)
+            err_console.print(f"[error]{e}[/error]")
+            err_console.print("Exiting.")
             return False
 
     if not manager.pull(opts.image, opts.platform or None):
-        print(f"Failed to pull {opts.image}", file=sys.stderr)
+        err_console.print(f"[error]Failed to pull {opts.image}[/error]")
         return False
 
     return True
@@ -935,30 +924,31 @@ def _execute_create(
     Returns:
         Exit code
     """
-    print(f"Creating '{opts.name}' using image {opts.image}\t", end="", file=sys.stderr)
+    err_console.print(f"Creating '{opts.name}' using image {opts.image}\t", end="")
 
     cmd = generate_create_command(manager, opts, config)
     result = manager.run(*cmd, capture_output=True)
 
     if result.returncode == 0:
         print_ok()
-        print(f"Distrobox '{opts.name}' successfully created.", file=sys.stderr)
+        err_console.print(f"Distrobox '{opts.name}' successfully created.")
         _print_enter_hint(opts.name, config.rootful)
 
         # Generate desktop entry
         if not config.rootful and not opts.no_entry:
             from .generate_entry import run as generate_entry_run
+
             try:
                 generate_entry_run([opts.name])
             except Exception as e:
-                print(f"Warning: Failed to generate desktop entry: {e}", file=sys.stderr)
+                err_console.print(f"[warning]Warning: Failed to generate desktop entry: {e}[/warning]")
 
         return 0
     else:
         print_err()
-        print("Failed to create container.", file=sys.stderr)
+        err_console.print("[error]Failed to create container.[/error]")
         if result.stderr:
-            print(result.stderr, file=sys.stderr)
+            err_console.print(result.stderr)
         return result.returncode
 
 
@@ -1010,7 +1000,7 @@ def run(args: list[str] | None = None) -> int:
 
     # Check if container already exists
     if manager.exists(opts.name):
-        print(f"Distrobox named '{opts.name}' already exists.")
+        err_console.print(f"Distrobox named '{opts.name}' already exists.")
         _print_enter_hint(opts.name, config.rootful)
         return 0
 

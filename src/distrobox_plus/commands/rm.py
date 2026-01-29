@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..console import console, err_console
 from ..container import detect_container_manager
 from ..utils import prompt_yes_no, InvalidInputError
 from .list import list_containers
@@ -93,7 +94,7 @@ def cleanup_exported_binaries(container_name: str) -> None:
     if not bin_dir.exists():
         return
 
-    print("Removing exported binaries...")
+    console.print("Removing exported binaries...")
 
     for binary in bin_dir.iterdir():
         if not binary.is_file():
@@ -103,7 +104,7 @@ def cleanup_exported_binaries(container_name: str) -> None:
             content = binary.read_text()
             # Check if this binary was exported by distrobox for this container
             if "# distrobox_binary" in content and f"# name: {container_name}" in content:
-                print(f"Removing exported binary {binary}...")
+                console.print(f"Removing exported binary {binary}...")
                 binary.unlink()
         except (OSError, UnicodeDecodeError):
             continue
@@ -147,7 +148,7 @@ def cleanup_exported_apps(container_name: str) -> None:
                     icon_name = line.split("=", 1)[1]
 
             if app_name:
-                print(f"Removing exported app {app_name}...")
+                console.print(f"Removing exported app {app_name}...")
 
             desktop_file.unlink()
 
@@ -209,7 +210,7 @@ def delete_container(
     status = manager.get_status(name)
     if status is None:
         # Match original distrobox behavior: print warning but don't fail
-        print(f"Cannot find container {name}.", file=sys.stderr)
+        err_console.print(f"Cannot find container {name}.")
         return True
 
     # Get container's home directory
@@ -231,9 +232,9 @@ def delete_container(
             rm_home_local = False
 
     # Remove the container
-    print("Removing container...")
+    console.print("Removing container...")
     if not manager.rm(name, force=force, volumes=True):
-        print(f"Failed to remove container {name}", file=sys.stderr)
+        err_console.print(f"[error]Failed to remove container {name}[/error]")
         return False
 
     # Clean up exports
@@ -247,9 +248,9 @@ def delete_container(
     if rm_home_local and container_home:
         try:
             shutil.rmtree(container_home)
-            print(f"Successfully removed {container_home}")
+            console.print(f"Successfully removed {container_home}")
         except OSError as e:
-            print(f"Failed to remove {container_home}: {e}", file=sys.stderr)
+            err_console.print(f"[error]Failed to remove {container_home}: {e}[/error]")
 
     return True
 
@@ -268,15 +269,11 @@ def run(args: list[str] | None = None) -> int:
         # Original uses basename and includes original args
         prog_name = Path(sys.argv[0]).name
         orig_args = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""
-        print(
+        err_console.print(
             f"Running {prog_name} via SUDO/DOAS is not supported. "
-            f"Instead, please try running:",
-            file=sys.stderr,
+            f"Instead, please try running:"
         )
-        print(
-            f"  {prog_name} --root {orig_args}",
-            file=sys.stderr,
-        )
+        err_console.print(f"  {prog_name} --root {orig_args}")
         return 1
 
     # Parse arguments
@@ -312,7 +309,7 @@ def run(args: list[str] | None = None) -> int:
     if parsed.all:
         container_names = get_all_distrobox_names(manager)
         if not container_names:
-            print("No containers found.", file=sys.stderr)
+            err_console.print("No containers found.")
             return 0
     elif parsed.containers:
         container_names = parsed.containers
@@ -329,7 +326,7 @@ def run(args: list[str] | None = None) -> int:
                 f"Do you really want to delete containers:{names_str}?",
                 default=True,
             ):
-                print("Aborted.")
+                console.print("Aborted.")
                 return 0
 
         # Collect running containers first
@@ -359,8 +356,8 @@ def run(args: list[str] | None = None) -> int:
                 verbose=config.verbose,
             )
     except InvalidInputError as e:
-        print(e, file=sys.stderr)
-        print("Exiting.", file=sys.stderr)
+        err_console.print(f"[error]{e}[/error]")
+        err_console.print("Exiting.")
         return 1
 
     return 0

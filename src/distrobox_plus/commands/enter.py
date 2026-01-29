@@ -14,17 +14,13 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..console import err_console, is_tty, print_ok, print_status, yellow, red
 from ..container import detect_container_manager
 from ..utils import (
     prompt_yes_no,
     InvalidInputError,
-    is_tty,
     filter_env_for_container,
     build_container_path,
-    print_ok,
-    print_status,
-    yellow,
-    red,
     get_command_path,
 )
 
@@ -230,7 +226,7 @@ def wait_for_container_setup(
         # Check container is still running
         status = manager.get_status(container_name)
         if status != "running":
-            print("\nContainer Setup Failure!", file=sys.stderr)
+            err_console.print("\n[error]Container Setup Failure![/error]")
             return False
 
         # Start logs process
@@ -252,11 +248,11 @@ def wait_for_container_setup(
                     # Logging command, ignore
                     continue
                 elif line.startswith("Error:"):
-                    print(f"\n{red(line)}", file=sys.stderr)
+                    err_console.print(f"\n{red(line)}")
                     logs_proc.kill()
                     return False
                 elif line.startswith("Warning:"):
-                    print(f"\n{yellow(line)}", file=sys.stderr, end="")
+                    err_console.print(f"\n{yellow(line)}", end="")
                 elif line.startswith("distrobox:"):
                     msg = line.split(" ", 1)[1] if " " in line else line
                     print_ok()
@@ -281,14 +277,8 @@ def run(args: list[str] | None = None) -> int:
     """
     # Check for sudo/doas
     if check_sudo_doas():
-        print(
-            f"Running {sys.argv[0]} via SUDO/DOAS is not supported.",
-            file=sys.stderr,
-        )
-        print(
-            f"Instead, please try running:\n  {sys.argv[0]} --root",
-            file=sys.stderr,
-        )
+        err_console.print(f"Running {sys.argv[0]} via SUDO/DOAS is not supported.")
+        err_console.print(f"Instead, please try running:\n  {sys.argv[0]} --root")
         return 1
 
     if args is None:
@@ -391,16 +381,16 @@ def run(args: list[str] | None = None) -> int:
         if not config.non_interactive:
             try:
                 if not prompt_yes_no(f"Create it now, out of image {DEFAULT_IMAGE}?"):
-                    print("For creating it, run:", file=sys.stderr)
-                    print("\tdistrobox create <name> --image <image>", file=sys.stderr)
+                    err_console.print("For creating it, run:")
+                    err_console.print("\tdistrobox create <name> --image <image>")
                     return 0
             except InvalidInputError as e:
-                print(e, file=sys.stderr)
-                print("Exiting.", file=sys.stderr)
+                err_console.print(f"[error]{e}[/error]")
+                err_console.print("Exiting.")
                 return 1
 
         # Create the container using built-in create command
-        print(f"Creating container {container_name}...", file=sys.stderr)
+        err_console.print(f"Creating container {container_name}...")
         from .create import run as create_run
         create_args = ["--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
         if config.rootful:
@@ -418,7 +408,7 @@ def run(args: list[str] | None = None) -> int:
         if not wait_for_container_setup(manager, container_name, config.verbose):
             return 1
 
-        print("\nContainer Setup Complete!", file=sys.stderr)
+        err_console.print("\n[ok]Container Setup Complete![/ok]")
 
     # Generate and run enter command
     cmd = generate_enter_command(

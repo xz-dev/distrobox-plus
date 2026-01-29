@@ -9,6 +9,7 @@ import argparse
 import sys
 
 from .config import VERSION
+from .console import console, err_console
 from .exceptions import DistroboxError
 
 
@@ -26,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
     except DistroboxError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        err_console.print(f"[error]Error: {e}[/error]")
         return e.exit_code
 
 
@@ -60,7 +61,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     # Handle "version" as a positional command (alias for --version)
     if argv and argv[0] == "version":
-        print(f"distrobox: {VERSION}")
+        console.print(f"distrobox: {VERSION}")
         return 0
 
     # Handle "help" as a positional command (alias for --help)
@@ -120,7 +121,7 @@ def _main(argv: list[str] | None = None) -> int:
             return run(args)
 
         case _:
-            print(f"Error: Unknown command '{command}'", file=sys.stderr)
+            err_console.print(f"[error]Error: Unknown command '{command}'[/error]")
             parser.print_help(sys.stderr)
             return 1
 

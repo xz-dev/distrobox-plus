@@ -11,8 +11,8 @@ import sys
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, check_sudo_doas
+from ..console import console, create_container_table
 from ..container import detect_container_manager
-from ..utils import GREEN, YELLOW, CLEAR, is_tty
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
@@ -98,12 +98,7 @@ def print_containers(
         containers: List of container dicts
         no_color: Disable color output
     """
-    use_color = is_tty() and not no_color
-
-    # Print header
-    print(
-        f"{'ID':<12} | {'NAME':<20} | {'STATUS':<18} | {'IMAGE':<30}"
-    )
+    table = create_container_table()
 
     for container in containers:
         container_id = container["id"]
@@ -111,17 +106,18 @@ def print_containers(
         status = container["status"]
         image = container["image"]
 
-        # Determine color based on status
-        line = f"{container_id:<12} | {name:<20} | {status:<18} | {image:<30}"
-
-        if use_color:
-            # Running containers in green, others in yellow
-            if "up" in status.lower() or "running" in status.lower():
-                print(f"{GREEN}{line}{CLEAR}")
-            else:
-                print(f"{YELLOW}{line}{CLEAR}")
+        # Determine style based on status
+        if "up" in status.lower() or "running" in status.lower():
+            style = "container.running"
         else:
-            print(line)
+            style = "container.stopped"
+
+        table.add_row(container_id, name, status, image, style=style)
+
+    if no_color:
+        console.print(table, highlight=False, style=None)
+    else:
+        console.print(table)
 
 
 def run(args: list[str] | None = None) -> int:

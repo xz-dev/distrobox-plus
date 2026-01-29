@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import TYPE_CHECKING
+
+from rich.logging import RichHandler
+
+from .console import err_console
 
 if TYPE_CHECKING:
     pass
@@ -37,15 +40,12 @@ def setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logger.setLevel(level)
 
-    # Console handler with simple format
-    handler = logging.StreamHandler(sys.stderr)
+    # Rich handler with nice formatting
+    handler = RichHandler(
+        console=err_console,
+        show_time=False,
+        show_path=verbose,
+        rich_tracebacks=True,
+    )
     handler.setLevel(level)
-
-    # Format: just the message for normal use, with level for debug
-    if verbose:
-        fmt = "%(levelname)s: %(message)s"
-    else:
-        fmt = "%(message)s"
-
-    handler.setFormatter(logging.Formatter(fmt))
     logger.addHandler(handler)

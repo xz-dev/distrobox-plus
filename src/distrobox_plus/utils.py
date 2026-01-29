@@ -13,79 +13,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# ANSI color codes
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RED = "\033[1;31m"  # Bold red
-CLEAR = "\033[0m"
-
 # RFC 1123: hostname max length is 64 characters
 MAX_HOSTNAME_LENGTH = 64
 
 
 class InvalidInputError(Exception):
     """Raised when user provides invalid input to a prompt."""
-
-
-def is_tty() -> bool:
-    """Check if stdin and stdout are connected to a TTY."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
-
-
-def colorize(text: str, color: str, force: bool = False) -> str:
-    """Apply ANSI color to text if in TTY.
-
-    Args:
-        text: Text to colorize
-        color: ANSI color code
-        force: Force color even if not in TTY
-
-    Returns:
-        Colorized text or original text if not in TTY
-    """
-    if force or is_tty():
-        return f"{color}{text}{CLEAR}"
-    return text
-
-
-def green(text: str) -> str:
-    """Color text green."""
-    return colorize(text, GREEN)
-
-
-def yellow(text: str) -> str:
-    """Color text yellow."""
-    return colorize(text, YELLOW)
-
-
-def red(text: str) -> str:
-    """Color text red."""
-    return colorize(text, RED)
-
-
-def print_ok(message: str = "OK") -> None:
-    """Print OK status in green."""
-    print(f" {green(f'[ {message} ]')}", file=sys.stderr)
-
-
-def print_err(message: str = "ERR") -> None:
-    """Print error status in red."""
-    print(f" {red(f'[ {message} ]')}", file=sys.stderr)
-
-
-def print_warning(message: str) -> None:
-    """Print warning message in yellow."""
-    print(yellow(f"Warning: {message}"), file=sys.stderr)
-
-
-def print_error(message: str) -> None:
-    """Print error message in red."""
-    print(red(f"Error: {message}"), file=sys.stderr)
-
-
-def print_status(message: str, end: str = "\t") -> None:
-    """Print status message to stderr."""
-    print(f"%-40s{end}" % message, file=sys.stderr, end="")
 
 
 def prompt_yes_no(

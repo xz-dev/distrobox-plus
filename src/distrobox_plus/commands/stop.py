@@ -11,6 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas
+from ..console import console, err_console
 from ..container import detect_container_manager
 from ..utils import prompt_yes_no, InvalidInputError
 from .list import list_containers
@@ -97,12 +98,11 @@ def run(args: list[str] | None = None) -> int:
     if check_sudo_doas():
         prog = os.path.basename(sys.argv[0])
         args_str = " ".join(sys.argv[1:])
-        print(
+        err_console.print(
             f"Running {prog} via SUDO/DOAS is not supported. "
-            "Instead, please try running:",
-            file=sys.stderr,
+            "Instead, please try running:"
         )
-        print(f"  {prog} --root {args_str}", file=sys.stderr)
+        err_console.print(f"  {prog} --root {args_str}")
         return 1
 
     # Parse arguments
@@ -134,7 +134,7 @@ def run(args: list[str] | None = None) -> int:
     if parsed.all:
         container_names = get_all_distrobox_names(manager)
         if not container_names:
-            print("No containers found.", file=sys.stderr)
+            err_console.print("No containers found.")
             return 0
     elif parsed.containers:
         container_names = parsed.containers
@@ -148,11 +148,11 @@ def run(args: list[str] | None = None) -> int:
     if not config.non_interactive:
         try:
             if not prompt_yes_no(f"Do you really want to stop {names_str}?"):
-                print("Aborted.")
+                console.print("Aborted.")
                 return 0
         except InvalidInputError as e:
-            print(e, file=sys.stderr)
-            print("Exiting.", file=sys.stderr)
+            err_console.print(f"[error]{e}[/error]")
+            err_console.print("Exiting.")
             return 1
 
     # Stop containers
