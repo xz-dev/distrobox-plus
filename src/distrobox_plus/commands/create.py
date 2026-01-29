@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -15,8 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.request import urlopen
 from urllib.error import URLError
-
-import platformdirs
 
 from ..config import (
     VERSION,
@@ -26,31 +23,27 @@ from ..config import (
     check_sudo_doas,
     get_user_info,
 )
-from ..container import detect_container_manager
+from ..container import USERNS_SIZE, detect_container_manager
 from ..utils import (
     derive_container_name,
-    get_hostname,
-    validate_hostname,
-    prompt_yes_no,
-    InvalidInputError,
-    get_script_path,
-    mkdir_p,
-    remove_trailing_slashes,
-    find_ro_mountpoints,
-    is_symlink,
-    get_real_path,
     file_exists,
-    print_ok,
+    find_ro_mountpoints,
+    get_cache_dir,
+    get_hostname,
+    get_real_path,
+    get_script_path,
+    InvalidInputError,
+    is_symlink,
+    mkdir_p,
     print_err,
+    print_ok,
+    prompt_yes_no,
+    remove_trailing_slashes,
+    validate_hostname,
 )
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
-
-
-def get_cache_dir() -> Path:
-    """Get the distrobox cache directory."""
-    return Path(platformdirs.user_cache_dir("distrobox"))
 
 
 def show_compatibility() -> int:
@@ -595,7 +588,7 @@ def _add_podman_options(
         userns = "--userns=keep-id"
         # Check for keep-id:size support
         if not config.userns_nolimit and manager.supports_keepid_size(opts.image):
-            userns += ":size=65536"
+            userns += f":size={USERNS_SIZE}"
         cmd.append(userns)
 
 
@@ -917,8 +910,8 @@ def _execute_create(
             from .generate_entry import run as generate_entry_run
             try:
                 generate_entry_run([opts.name])
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: Failed to generate desktop entry: {e}", file=sys.stderr)
 
         return 0
     else:

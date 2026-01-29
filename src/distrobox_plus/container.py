@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 SUPPORTED_MANAGERS = ("podman", "podman-launcher", "docker", "lilipod")
 
+# Default size for user namespace UID/GID mapping (2^16)
+USERNS_SIZE = 65536
+
 
 @dataclass
 class ContainerManager:
@@ -404,7 +407,7 @@ class ContainerManager:
             return False
 
         result = self.run(
-            "run", "--rm", "--userns=keep-id:size=65536",
+            "run", "--rm", f"--userns=keep-id:size={USERNS_SIZE}",
             image, "/bin/true"
         )
         # Success or command not found (127) means feature is supported

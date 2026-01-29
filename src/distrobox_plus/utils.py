@@ -19,11 +19,12 @@ YELLOW = "\033[33m"
 RED = "\033[1;31m"  # Bold red
 CLEAR = "\033[0m"
 
+# RFC 1123: hostname max length is 64 characters
+MAX_HOSTNAME_LENGTH = 64
+
 
 class InvalidInputError(Exception):
     """Raised when user provides invalid input to a prompt."""
-
-    pass
 
 
 def is_tty() -> bool:
@@ -222,7 +223,7 @@ def get_hostname() -> str:
 
 
 def validate_hostname(hostname: str) -> bool:
-    """Validate that hostname is <= 64 characters.
+    """Validate that hostname is within RFC 1123 length limit.
 
     Args:
         hostname: Hostname to validate
@@ -230,7 +231,7 @@ def validate_hostname(hostname: str) -> bool:
     Returns:
         True if valid
     """
-    return len(hostname) <= 64
+    return len(hostname) <= MAX_HOSTNAME_LENGTH
 
 
 def find_ro_mountpoints() -> set[str]:

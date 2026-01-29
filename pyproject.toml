@@ -1,24 +1,42 @@
 [project]
 name = "distrobox-plus"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Python implementation of distrobox for creating and managing containerized development environments"
 authors = [
     { name = "xz-dev", email = "xiangzhedev@gmail.com" }
 ]
-requires-python = ">=3.13"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["distrobox", "container", "podman", "docker", "development", "environment"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: System :: Containers",
+]
 dependencies = [
     "platformdirs>=4.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/xz-dev/distrobox-plus"
+Repository = "https://github.com/xz-dev/distrobox-plus"
+Issues = "https://github.com/xz-dev/distrobox-plus/issues"
 
 [project.scripts]
 distrobox-plus = "distrobox_plus:main"
 distrobox-export = "distrobox_plus.commands.export:run"
 distrobox-generate-entry = "distrobox_plus.commands.generate_entry:run"
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-]
 
 [build-system]
 requires = ["uv_build>=0.9.25,<0.10.0"]

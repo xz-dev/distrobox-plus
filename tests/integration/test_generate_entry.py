@@ -259,14 +259,13 @@ class TestGenerateEntryRun:
         assert result == 1
 
     @pytest.mark.fast
-    def test_run_delete_nonexistent_entry(self):
+    def test_run_delete_nonexistent_entry(self, monkeypatch):
         """Test deleting non-existent entry (should succeed)."""
+        import distrobox_plus.commands.generate_entry as ge_mod
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Mock the applications directory
-            with mock.patch(
-                "distrobox_plus.commands.generate_entry._get_applications_dir",
-                return_value=Path(tmpdir),
-            ):
-                # Delete should succeed even if entry doesn't exist
-                result = run(["nonexistent-container", "--delete"])
-                assert result == 0
+            monkeypatch.setattr(ge_mod, "_get_applications_dir", lambda: Path(tmpdir))
+            # Delete should succeed even if entry doesn't exist
+            result = run(["nonexistent-container", "--delete"])
+            assert result == 0
