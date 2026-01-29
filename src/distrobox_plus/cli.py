@@ -5,32 +5,10 @@ Routes commands to the appropriate subcommand handlers.
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 from .config import VERSION
-
-HELP_TEXT = f"""\
-distrobox version: {VERSION}
-
-Choose one of the available commands:
-    assemble
-    create
-    enter
-    ephemeral
-    export
-    generate-entry
-    list | ls
-    rm
-    stop
-    upgrade
-    version
-    help
-"""
-
-
-def show_help() -> None:
-    """Print help message."""
-    print(HELP_TEXT)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -44,15 +22,51 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Exit code
     """
+    parser = argparse.ArgumentParser(
+        prog="distrobox",
+        description="Create and manage containerized environments",
+    )
+    parser.add_argument(
+        "-V", "--version",
+        action="version",
+        version=f"distrobox: {VERSION}",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", metavar="command")
+
+    subparsers.add_parser("assemble", help="Create containers from a manifest file")
+    subparsers.add_parser("create", help="Create a new container")
+    subparsers.add_parser("enter", help="Enter a container")
+    subparsers.add_parser("ephemeral", help="Create a temporary container")
+    subparsers.add_parser("export", help="Export apps/services from container to host")
+    subparsers.add_parser("generate-entry", help="Generate desktop entry for container")
+    subparsers.add_parser("list", aliases=["ls"], help="List containers")
+    subparsers.add_parser("rm", help="Remove containers")
+    subparsers.add_parser("stop", help="Stop running containers")
+    subparsers.add_parser("upgrade", help="Upgrade containers")
+
     if argv is None:
         argv = sys.argv[1:]
 
-    if not argv:
-        show_help()
+    # Handle "version" as a positional command (alias for --version)
+    if argv and argv[0] == "version":
+        print(f"distrobox: {VERSION}")
         return 0
 
-    command = argv[0]
-    args = argv[1:]
+    # Handle "help" as a positional command (alias for --help)
+    if argv and argv[0] == "help":
+        parser.print_help()
+        return 0
+
+    # Parse only the first argument to get the command
+    parsed, remaining = parser.parse_known_args(argv)
+
+    if not parsed.command:
+        parser.print_help()
+        return 0
+
+    command = parsed.command
+    args = remaining
 
     match command:
         case "assemble":
@@ -95,18 +109,9 @@ def main(argv: list[str] | None = None) -> int:
             from .commands.upgrade import run
             return run(args)
 
-        case "-V" | "--version" | "version":
-            print(f"distrobox: {VERSION}")
-            return 0
-
-        case "-h" | "--help" | "help":
-            show_help()
-            return 0
-
         case _:
             print(f"Error: Unknown command '{command}'", file=sys.stderr)
-            print(file=sys.stderr)
-            show_help()
+            parser.print_help(sys.stderr)
             return 1
 
 
