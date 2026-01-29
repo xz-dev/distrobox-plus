@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from ..config import VERSION, Config, check_sudo_doas
 from ..container import detect_container_manager
 from ..utils import RED, CLEAR, is_tty
+from .list import list_containers
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
@@ -89,38 +90,24 @@ def _print_sudo_error() -> int:
 def _get_all_containers(manager: ContainerManager) -> list[str]:
     """Get list of all distrobox container names.
 
+    Uses list_containers() to match behavior of original shell script
+    which calls distrobox-list.
+
     Args:
         manager: Container manager to use
 
     Returns:
         List of container names
     """
-    # Use same format as distrobox-list to detect distrobox containers
-    format_str = "{{.ID}}|{{.Image}}|{{.Names}}|{{.Status}}|{{.Labels}}{{.Mounts}}"
-    output = manager.ps(all_=True, format_=format_str, no_trunc=True)
-
-    containers = []
-    for line in output.strip().splitlines():
-        if not line:
-            continue
-
-        # Check if this is a distrobox container (has distrobox in labels/mounts)
-        if "distrobox" not in line:
-            continue
-
-        parts = line.split("|")
-        if len(parts) < 3:
-            continue
-
-        name = parts[2]
-        if name:
-            containers.append(name)
-
-    return containers
+    containers = list_containers(manager, no_color=True)
+    return [c["name"] for c in containers]
 
 
 def _get_running_containers(manager: ContainerManager) -> list[str]:
     """Get list of running distrobox container names.
+
+    Uses list_containers() to match behavior of original shell script
+    which calls distrobox-list and filters with: grep -iE '| running|up'
 
     Args:
         manager: Container manager to use
@@ -128,31 +115,14 @@ def _get_running_containers(manager: ContainerManager) -> list[str]:
     Returns:
         List of running container names
     """
-    # Use same format as distrobox-list to detect distrobox containers
-    format_str = "{{.ID}}|{{.Image}}|{{.Names}}|{{.Status}}|{{.Labels}}{{.Mounts}}"
-    output = manager.ps(all_=True, format_=format_str, no_trunc=True)
-
-    containers = []
-    for line in output.strip().splitlines():
-        if not line:
-            continue
-
-        # Check if this is a distrobox container (has distrobox in labels/mounts)
-        if "distrobox" not in line:
-            continue
-
-        parts = line.split("|")
-        if len(parts) < 4:
-            continue
-
-        name = parts[2]
-        status = parts[3].lower()
-
-        # Check if running (matches original: grep -iE '\| running|up')
-        if name and ("running" in status or "up" in status):
-            containers.append(name)
-
-    return containers
+    containers = list_containers(manager, no_color=True)
+    running = []
+    for c in containers:
+        status = c["status"].lower()
+        # Match original: grep -iE '\| running|up'
+        if "running" in status or "up" in status:
+            running.append(c["name"])
+    return running
 
 
 def _upgrade_container(

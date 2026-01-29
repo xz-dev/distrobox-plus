@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # ANSI color codes
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
-RED = "\033[31m"
+RED = "\033[1;31m"  # Bold red
 CLEAR = "\033[0m"
 
 
