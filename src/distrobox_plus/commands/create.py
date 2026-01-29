@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -46,6 +47,50 @@ if TYPE_CHECKING:
     from ..container import ContainerManager
 
 
+def _parse_image_list(content: str) -> list[str]:
+    """Parse markdown table to extract image list.
+
+    Finds the table with 'Images' column header and extracts all image names.
+
+    Args:
+        content: Markdown content containing compatibility table
+
+    Returns:
+        Sorted list of unique image names
+    """
+    lines = content.splitlines()
+    images_col = -1
+    in_table = False
+    images: list[str] = []
+
+    for line in lines:
+        if not line.startswith("|"):
+            in_table = False
+            continue
+
+        parts = [p.strip() for p in line.split("|")]
+
+        # Find Images column in header
+        if "Images" in parts:
+            images_col = parts.index("Images")
+            in_table = True
+            continue
+
+        # Skip separator line (e.g., | --- | --- |)
+        if in_table and images_col > 0 and set(parts[images_col]) <= {"-", " ", ":"}:
+            continue
+
+        # Extract images from the column
+        if in_table and images_col > 0 and len(parts) > images_col:
+            images.extend(
+                img.strip()
+                for img in re.split(r"<br>", parts[images_col])
+                if img.strip()
+            )
+
+    return sorted(set(images))
+
+
 def show_compatibility() -> int:
     """Show list of compatible images, with local caching.
 
@@ -80,28 +125,7 @@ def show_compatibility() -> int:
         print(f"ERROR: failed to fetch compatibility list: {e}", file=sys.stderr)
         return 1
 
-    # Parse the markdown table to extract image list
-    # Extract lines between | Alma... and | Void...
-    images: list[str] = []
-    in_table = False
-    for line in content.splitlines():
-        if line.startswith("| Alma"):
-            in_table = True
-        if in_table:
-            # Extract 4th column (image names)
-            parts = line.split("|")
-            if len(parts) >= 4:
-                image_cell = parts[3].strip()
-                # Split by <br> and clean up
-                for img in image_cell.replace("<br>", "\n").split("\n"):
-                    img = img.strip()
-                    if img:
-                        images.append(img)
-            if line.startswith("| Void"):
-                break
-
-    # Sort and deduplicate
-    images = sorted(set(images))
+    images = _parse_image_list(content)
     result = "\n".join(images) + "\n"
 
     # Cache the result
