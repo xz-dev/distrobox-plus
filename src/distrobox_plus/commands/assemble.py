@@ -114,8 +114,10 @@ class ManifestParser:
                 if current_section is not None:
                     sections[current_section] = current_values
 
-                # Start new section (remove brackets and spaces)
-                current_section = line.strip('[] ')
+                # Start new section
+                # Shell uses: tr -d '][ ' which removes ALL brackets and spaces
+                # not just leading/trailing ones
+                current_section = line.translate(str.maketrans('', '', '[] '))
                 current_values = {}
                 continue
 
@@ -128,7 +130,8 @@ class ManifestParser:
                 continue
 
             key, value = line.split('=', 1)
-            key = key.strip()
+            # Shell uses: tr -d ' ' which removes ALL spaces from key
+            key = key.replace(' ', '')
             value = value.strip()
 
             # Normalize booleans
@@ -190,8 +193,9 @@ class ManifestParser:
 
             # Process includes first
             for include_name in raw.get("include", []):
-                # Strip quotes from include name
-                include_name = include_name.strip('"\'')
+                # Shell uses: tr -d '"' which removes ALL double quotes
+                # (not just leading/trailing, and not single quotes)
+                include_name = include_name.replace('"', '')
                 base = resolve(include_name, stack + [name])
                 for key, values in base.items():
                     if key == "include":

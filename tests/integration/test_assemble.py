@@ -293,6 +293,74 @@ include=nonexistent
         assert "cannot include" in str(exc_info.value).lower()
         assert "nonexistent" in str(exc_info.value)
 
+    @pytest.mark.fast
+    def test_include_with_quoted_name(self):
+        """Test include with quoted section name (shell compatibility).
+
+        Shell uses: tr -d '"' which removes ALL double quotes.
+        """
+        content = """\
+[base]
+image=alpine:latest
+
+[derived]
+include="base"
+"""
+        parser = ManifestParser(content)
+        specs = parser.parse()
+
+        # Should resolve the include despite quotes
+        assert specs["derived"].image == "alpine:latest"
+
+
+class TestEdgeCases:
+    """Test edge cases for shell script compatibility."""
+
+    @pytest.mark.fast
+    def test_section_name_with_spaces(self):
+        """Test that spaces in section names are removed (shell compatibility).
+
+        Shell uses: tr -d '][ ' which removes ALL brackets and spaces.
+        """
+        content = """\
+[ my box ]
+image=alpine:latest
+"""
+        parser = ManifestParser(content)
+        specs = parser.parse()
+
+        # Shell removes ALL spaces, so "[ my box ]" becomes "mybox"
+        assert "mybox" in specs
+        assert specs["mybox"].image == "alpine:latest"
+
+    @pytest.mark.fast
+    def test_key_with_spaces(self):
+        """Test that spaces in keys are removed (shell compatibility).
+
+        Shell uses: tr -d ' ' which removes ALL spaces from key.
+        """
+        content = """\
+[mybox]
+im age=alpine:latest
+"""
+        parser = ManifestParser(content)
+        specs = parser.parse()
+
+        # Shell removes ALL spaces from key, so "im age" becomes "image"
+        assert specs["mybox"].image == "alpine:latest"
+
+    @pytest.mark.fast
+    def test_key_with_leading_trailing_spaces(self):
+        """Test keys with leading/trailing spaces."""
+        content = """\
+[mybox]
+  image  =alpine:latest
+"""
+        parser = ManifestParser(content)
+        specs = parser.parse()
+
+        assert specs["mybox"].image == "alpine:latest"
+
 
 class TestEncodeVariable:
     """Test _encode_variable function."""
