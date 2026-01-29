@@ -9,6 +9,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -91,8 +92,23 @@ def _parse_image_list(content: str) -> list[str]:
     return sorted(set(images))
 
 
+CACHE_TTL_HOURS = 1
+
+
+def _is_cache_valid(cache_file: Path) -> bool:
+    """Check if cache file exists and is not expired."""
+    if not cache_file.exists() or cache_file.stat().st_size == 0:
+        return False
+    mtime = cache_file.stat().st_mtime
+    # If filesystem doesn't support mtime (returns 0), cache never expires
+    if mtime <= 0:
+        return True
+    age_hours = (time.time() - mtime) / 3600
+    return age_hours < CACHE_TTL_HOURS
+
+
 def show_compatibility() -> int:
-    """Show list of compatible images, with local caching.
+    """Show list of compatible images, with local caching (1-hour TTL).
 
     Returns:
         Exit code (0 on success, 1 on failure)
@@ -101,7 +117,7 @@ def show_compatibility() -> int:
     cache_file = cache_dir / f"distrobox-compatibility-{VERSION}"
 
     # Try to use cached version
-    if cache_file.exists() and cache_file.stat().st_size > 0:
+    if _is_cache_valid(cache_file):
         print(cache_file.read_text(), end="")
         return 0
 
@@ -126,13 +142,13 @@ def show_compatibility() -> int:
         return 1
 
     images = _parse_image_list(content)
-    result = "\n".join(images) + "\n"
+    result = "\n".join(images)
 
     # Cache the result
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file.write_text(result)
 
-    print(result, end="")
+    print(result)
     return 0
 
 
