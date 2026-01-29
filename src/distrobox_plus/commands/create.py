@@ -397,7 +397,8 @@ def get_clone_image(manager: ContainerManager, clone_name: str) -> str | None:
 
     if status == "running":
         print_error(f"Container {clone_name} is running.")
-        print_error("Please stop it first. Cannot clone a running container.")
+        print_error("Please stop it first.")
+        print_error("Cannot clone a running container.")
         return None
 
     # Get container ID
@@ -477,8 +478,11 @@ def _add_distrobox_volumes(
     export_path = get_script_path("distrobox-export")
     hostexec_path = get_script_path("distrobox-host-exec")
 
-    if not entrypoint_path or not export_path:
-        print_error("[error]Error: distrobox-init or distrobox-export not found[/error]")
+    if not entrypoint_path:
+        print_error("[error]Error: distrobox-plus installation incomplete, missing distrobox-init[/error]")
+        sys.exit(127)
+    if not export_path:
+        print_error("[error]Error: distrobox-plus installation incomplete, missing distrobox-export[/error]")
         sys.exit(127)
 
     cmd.append("--volume=/tmp:/tmp:rslave")
@@ -900,7 +904,8 @@ def _ensure_image(
         print_error(f"Image {opts.image} not found.")
         try:
             if not prompt_yes_no("Do you want to pull the image now?"):
-                print_error(f"Next time, run: {manager.name} pull {opts.image}")
+                print_error("next time, run this command first:")
+                print_error(f"\t{manager.name} pull {opts.image}")
                 return False
         except InvalidInputError as e:
             print_error(f"[error]{e}[/error]")

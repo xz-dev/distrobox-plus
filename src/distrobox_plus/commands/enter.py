@@ -381,8 +381,8 @@ def run(args: list[str] | None = None) -> int:
         if not config.non_interactive:
             try:
                 if not prompt_yes_no(f"Create it now, out of image {DEFAULT_IMAGE}?"):
-                    print_error("For creating it, run:")
-                    print_error("\tdistrobox create <name> --image <image>")
+                    print_error("Ok. For creating it, run this command:")
+                    print_error("\tdistrobox create <name-of-container> --image <remote>/<docker>:<tag>")
                     return 0
             except InvalidInputError as e:
                 print_error(red(str(e)))
