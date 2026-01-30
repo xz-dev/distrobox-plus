@@ -1,10 +1,14 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# This file is part of the distrobox project:
+# This file is part of the distrobox-plus project:
+#    https://github.com/xz-dev/distrobox-plus
+#
+# Based on distrobox by Luca Di Maio:
 #    https://github.com/89luca89/distrobox
 #
 # Copyright (C) 2022 distrobox contributors
+# Copyright (C) 2024 distrobox-plus contributors
 #
 # distrobox is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License version 3
@@ -36,7 +40,7 @@ host_spawn_version="v1.6.0"
 download_command=""
 sudo_command=""
 verbose=0
-version="1.8.2.3"
+version="${DISTROBOX_VERSION:-1.8.2.3}"
 
 # show_help will print usage to stdout.
 # Arguments:

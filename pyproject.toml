@@ -36,7 +36,6 @@ Issues = "https://github.com/xz-dev/distrobox-plus/issues"
 
 [project.scripts]
 distrobox-plus = "distrobox_plus:main"
-distrobox-export = "distrobox_plus.commands.export:run"
 distrobox-generate-entry = "distrobox_plus.commands.generate_entry:run"
 
 [build-system]

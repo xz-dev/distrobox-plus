@@ -1,10 +1,14 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# This file is part of the distrobox project:
+# This file is part of the distrobox-plus project:
+#    https://github.com/xz-dev/distrobox-plus
+#
+# Based on distrobox by Luca Di Maio:
 #    https://github.com/89luca89/distrobox
 #
 # Copyright (C) 2021 distrobox contributors
+# Copyright (C) 2024 distrobox-plus contributors
 #
 # distrobox is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License version 3
@@ -74,7 +78,7 @@ pre_init_hook=""
 rootful=0
 upgrade=0
 verbose=0
-version="1.8.2.3"
+version="${DISTROBOX_VERSION:-1.8.2.3}"
 
 # show_help will print usage to stdout.
 # Arguments:
@@ -1829,14 +1833,15 @@ SHELL="$(command -v "${shell_pkg}")"
 
 # Attempt to download host-spawn during init, we don't care if it fails, so let's
 # continue in that case
-/usr/bin/distrobox-host-exec -Y test 2> /dev/null > /dev/null || :
+host_exec_path=$(command -v distrobox-host-exec 2>/dev/null || echo "/usr/bin/distrobox-host-exec")
+"${host_exec_path}" -Y test 2> /dev/null > /dev/null || :
 
 # If xdg-open is not present and we don't have an init system, do a link of it.
 # This is handy to handle opening of links, files and apps from inside the container
 # into the host.
 if [ "${init}" -eq 0 ] && ! command -v xdg-open; then
 	mkdir -p /usr/local/bin/
-	ln -sf /usr/bin/distrobox-host-exec /usr/local/bin/xdg-open
+	ln -sf "${host_exec_path}" /usr/local/bin/xdg-open
 fi
 
 # If flatpak is not present, do a link of it. This is handy to handle opening of
@@ -1844,7 +1849,7 @@ fi
 # Note: we're using /usr/bin instead of /usr/local/bin because xdg-open will read
 # the desktopfile, which will contain an absolute path of /usr/bin/flatpak
 if ! command -v flatpak; then
-	ln -sf /usr/bin/distrobox-host-exec /usr/bin/flatpak
+	ln -sf "${host_exec_path}" /usr/bin/flatpak
 fi
 
 ###############################################################################
