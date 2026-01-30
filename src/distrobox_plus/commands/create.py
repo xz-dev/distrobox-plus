@@ -26,6 +26,7 @@ from ..config import (
     get_user_info,
 )
 from ..container import USERNS_SIZE, detect_container_manager
+from ..utils.builder import ensure_boost_image
 from ..utils.console import green, print_error, red
 from ..utils.helpers import (
     InvalidInputError,
@@ -965,6 +966,61 @@ def _execute_create(
         return result.returncode
 
 
+def _maybe_boost_image(
+    manager: ContainerManager,
+    opts: CreateOptions,
+    config: Config,
+) -> bool:
+    """Build a boosted image if conditions are met.
+
+    Modifies opts.image to point to the boosted image and clears the
+    additional_packages, init_hooks, and pre_init_hooks since they're
+    baked into the image.
+
+    Args:
+        manager: Container manager
+        opts: Create options (will be modified)
+        config: Configuration
+
+    Returns:
+        True if successful (or boost not needed), False on failure
+    """
+    # Skip boost if no packages or hooks to bake in
+    if not opts.additional_packages and not opts.init_hooks and not opts.pre_init_hooks:
+        return True
+
+    # Skip boost for cloned images (already customized)
+    if opts.clone:
+        return True
+
+    # Build the boosted image
+    boosted = ensure_boost_image(
+        manager,
+        opts.image,
+        opts.additional_packages,
+        opts.init_hooks,
+        opts.pre_init_hooks,
+        verbose=config.verbose,
+    )
+
+    if boosted is None:
+        print_error(
+            "[warning]Warning: Failed to build boosted image, "
+            "falling back to standard creation[/warning]"
+        )
+        return True  # Don't fail, just proceed without boost
+
+    # Update opts to use the boosted image
+    opts.image = boosted
+
+    # Clear the baked-in options so they're not passed to entrypoint again
+    opts.additional_packages = ""
+    opts.init_hooks = ""
+    opts.pre_init_hooks = ""
+
+    return True
+
+
 def run(args: list[str] | None = None) -> int:
     """Run the distrobox-create command.
 
@@ -1022,6 +1078,10 @@ def run(args: list[str] | None = None) -> int:
         # User declined to pull - return 0 (not an error)
         if not opts.pull and not config.non_interactive:
             return 0
+        return 1
+
+    # Build boosted image if additional packages/hooks are specified
+    if not _maybe_boost_image(manager, opts, config):
         return 1
 
     return _execute_create(manager, opts, config)

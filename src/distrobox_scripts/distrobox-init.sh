@@ -1785,7 +1785,8 @@ elif command -v yum; then
 fi
 
 # Check if dependencies are met for the script to run.
-if [ "${upgrade}" -ne 0 ] || [ ! -e /.containersetupdone ]; then
+# Skip package setup if running in a boosted image (/.distrobox-boost marker present)
+if [ "${upgrade}" -ne 0 ] || { [ ! -e /.containersetupdone ] && [ ! -e /.distrobox-boost ]; }; then
 
 	# Detect the available package manager
 	# install minimal dependencies needed to bootstrap the container:
@@ -1826,6 +1827,9 @@ if [ "${upgrade}" -ne 0 ] || [ ! -e /.containersetupdone ]; then
 		fi
 		touch /.containersetupdone
 	fi
+elif [ -e /.distrobox-boost ] && [ ! -e /.containersetupdone ]; then
+	# Boosted image: packages are pre-installed, just mark setup as done
+	touch /.containersetupdone
 fi
 
 # Set SHELL to the install path inside the container

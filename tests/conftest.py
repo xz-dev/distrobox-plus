@@ -306,6 +306,41 @@ class DistroboxImplementation:
             "rm", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")}
         )
 
+    def build(self, **kwargs) -> CommandResult:
+        """Build a boosted distrobox image.
+
+        Note: This is a distrobox-plus only command.
+        """
+        args = []
+
+        if "image" in kwargs:
+            args.extend(["--image", kwargs["image"]])
+
+        if "additional_packages" in kwargs:
+            for pkg in kwargs["additional_packages"]:
+                args.extend(["--additional-packages", pkg])
+
+        if "init_hooks" in kwargs:
+            args.extend(["--init-hooks", kwargs["init_hooks"]])
+
+        if "pre_init_hooks" in kwargs:
+            args.extend(["--pre-init-hooks", kwargs["pre_init_hooks"]])
+
+        if kwargs.get("dry_run"):
+            args.append("--dry-run")
+
+        if kwargs.get("force"):
+            args.append("--force")
+
+        if kwargs.get("verbose"):
+            args.append("--verbose")
+
+        return self.run(
+            "build",
+            args,
+            **{k: v for k, v in kwargs.items() if k in ("check", "timeout")},
+        )
+
     def container_exists(self, name: str) -> bool:
         """Check if a container exists."""
         result = subprocess.run(

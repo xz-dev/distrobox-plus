@@ -47,6 +47,7 @@ def _main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", metavar="command")
 
     subparsers.add_parser("assemble", help="Create containers from a manifest file")
+    subparsers.add_parser("build", help="Build optimized container image")
     subparsers.add_parser("create", help="Create a new container")
     subparsers.add_parser("enter", help="Enter a container")
     subparsers.add_parser("ephemeral", help="Create a temporary container")
@@ -83,6 +84,11 @@ def _main(argv: list[str] | None = None) -> int:
     match command:
         case "assemble":
             from .commands.assemble import run
+
+            return run(args)
+
+        case "build":
+            from .commands.build import run
 
             return run(args)
 
