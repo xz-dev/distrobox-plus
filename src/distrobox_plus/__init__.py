@@ -14,17 +14,19 @@ def _get_command_name() -> str:
     """Get command name from package metadata (pyproject.toml)."""
     try:
         from importlib.metadata import metadata
+
         return metadata(__package__)["Name"]
     except Exception:
         # Development mode: read from pyproject.toml directly
-        import tomllib
         from pathlib import Path
+
+        import tomllib  # type: ignore[import-not-found]
 
         pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
         if pyproject.exists():
             with open(pyproject, "rb") as f:
                 data = tomllib.load(f)
-            return data.get("project", {}).get("name", "distrobox-plus")
+            return str(data.get("project", {}).get("name", "distrobox-plus"))
         raise
 
 

@@ -9,7 +9,7 @@ import argparse
 import sys
 
 from .config import VERSION
-from .utils.console import print_msg, print_error, red
+from .utils.console import print_error, print_msg, red
 from .utils.exceptions import DistroboxError
 
 
@@ -38,7 +38,8 @@ def _main(argv: list[str] | None = None) -> int:
         description="Create and manage containerized environments",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -82,42 +83,52 @@ def _main(argv: list[str] | None = None) -> int:
     match command:
         case "assemble":
             from .commands.assemble import run
+
             return run(args)
 
         case "create":
             from .commands.create import run
+
             return run(args)
 
         case "enter":
             from .commands.enter import run
+
             return run(args)
 
         case "ephemeral":
             from .commands.ephemeral import run
+
             return run(args)
 
         case "export":
             from .commands.export import run
+
             return run(args)
 
         case "generate-entry":
             from .commands.generate_entry import run
+
             return run(args)
 
         case "list" | "ls":
             from .commands.list import run
+
             return run(args)
 
         case "stop":
             from .commands.stop import run
+
             return run(args)
 
         case "rm":
             from .commands.rm import run
+
             return run(args)
 
         case "upgrade":
             from .commands.upgrade import run
+
             return run(args)
 
         case _:

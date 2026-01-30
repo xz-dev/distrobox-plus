@@ -11,12 +11,12 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.request import urlopen
 from urllib.error import URLError
+from urllib.request import urlopen
 
 from ..config import VERSION, Config, check_sudo_doas
 from ..container import detect_container_manager
-from ..utils.console import print_msg, print_error, red
+from ..utils.console import print_error, print_msg
 
 
 @dataclass
@@ -53,16 +53,34 @@ class ContainerSpec:
 class ManifestParser:
     """Parse distrobox manifest/INI files."""
 
-    MULTI_VALUE_KEYS = frozenset({
-        "volume", "additional_packages", "additional_flags",
-        "init_hooks", "pre_init_hooks", "exported_apps", "exported_bins"
-    })
+    MULTI_VALUE_KEYS = frozenset(
+        {
+            "volume",
+            "additional_packages",
+            "additional_flags",
+            "init_hooks",
+            "pre_init_hooks",
+            "exported_apps",
+            "exported_bins",
+        }
+    )
 
-    BOOLEAN_KEYS = frozenset({
-        "init", "entry", "nvidia", "root", "pull", "start_now",
-        "unshare_groups", "unshare_ipc", "unshare_netns",
-        "unshare_process", "unshare_devsys", "unshare_all"
-    })
+    BOOLEAN_KEYS = frozenset(
+        {
+            "init",
+            "entry",
+            "nvidia",
+            "root",
+            "pull",
+            "start_now",
+            "unshare_groups",
+            "unshare_ipc",
+            "unshare_netns",
+            "unshare_process",
+            "unshare_devsys",
+            "unshare_all",
+        }
+    )
 
     HOOK_KEYS = frozenset({"init_hooks", "pre_init_hooks"})
 
@@ -100,17 +118,17 @@ class ManifestParser:
             # Clean up the line (matches shell script processing)
             # Remove comments and trailing spaces
             # sed 's/\t/ /g' | sed 's/^#.*//g' | sed 's/].*#.*//g' | sed 's/ #.*//g' | sed 's/\s*$//g'
-            line = line.replace('\t', ' ')
-            line = re.sub(r'^#.*', '', line)
-            line = re.sub(r'\].*#.*', '', line)
-            line = re.sub(r' #.*', '', line)
+            line = line.replace("\t", " ")
+            line = re.sub(r"^#.*", "", line)
+            line = re.sub(r"\].*#.*", "", line)
+            line = re.sub(r" #.*", "", line)
             line = line.rstrip()
 
             if not line:
                 continue
 
             # Detect section header
-            if line.startswith('['):
+            if line.startswith("["):
                 # Save previous section
                 if current_section is not None:
                     sections[current_section] = current_values
@@ -118,7 +136,7 @@ class ManifestParser:
                 # Start new section
                 # Shell uses: tr -d '][ ' which removes ALL brackets and spaces
                 # not just leading/trailing ones
-                current_section = line.translate(str.maketrans('', '', '[] '))
+                current_section = line.translate(str.maketrans("", "", "[] "))
                 current_values = {}
                 continue
 
@@ -127,12 +145,12 @@ class ManifestParser:
                 continue
 
             # Parse key=value
-            if '=' not in line:
+            if "=" not in line:
                 continue
 
-            key, value = line.split('=', 1)
+            key, value = line.split("=", 1)
             # Shell uses: tr -d ' ' which removes ALL spaces from key
-            key = key.replace(' ', '')
+            key = key.replace(" ", "")
             # Shell: cut -d'=' -f2- does NOT strip value
             # Line trailing spaces already removed by rstrip() above
 
@@ -223,7 +241,7 @@ class ManifestParser:
             for include_name in raw.get("include", []):
                 # Shell uses: tr -d '"' which removes ALL double quotes
                 # (not just leading/trailing, and not single quotes)
-                include_name = include_name.replace('"', '')
+                include_name = include_name.replace('"', "")
                 base, include_stack = resolve_includes(include_name, include_stack)
                 for key, values in base.items():
                     if key == "include":
@@ -279,9 +297,13 @@ class ManifestParser:
             if "volume" in values:
                 spec.volumes = [_strip_quotes(v) for v in values["volume"]]
             if "additional_packages" in values:
-                spec.additional_packages = [_strip_quotes(v) for v in values["additional_packages"]]
+                spec.additional_packages = [
+                    _strip_quotes(v) for v in values["additional_packages"]
+                ]
             if "additional_flags" in values:
-                spec.additional_flags = [_strip_quotes(v) for v in values["additional_flags"]]
+                spec.additional_flags = [
+                    _strip_quotes(v) for v in values["additional_flags"]
+                ]
             if "init_hooks" in values:
                 spec.init_hooks = values["init_hooks"]
             if "pre_init_hooks" in values:
@@ -325,26 +347,31 @@ Usage:
         help="path or URL to the distrobox manifest/ini file",
     )
     parser.add_argument(
-        "-n", "--name",
+        "-n",
+        "--name",
         help="run against a single entry in the manifest/ini file",
     )
     parser.add_argument(
-        "-R", "--replace",
+        "-R",
+        "--replace",
         action="store_true",
         help="replace already existing distroboxes with matching names",
     )
     parser.add_argument(
-        "-d", "--dry-run",
+        "-d",
+        "--dry-run",
         action="store_true",
         help="only print the container manager command generated",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -354,7 +381,9 @@ Usage:
 def _print_sudo_error() -> int:
     """Print error message when running via sudo/doas."""
     print_error(f"Running {sys.argv[0]} via SUDO/DOAS is not supported.")
-    print_error("Instead, please try using root=true property in the distrobox.ini file.")
+    print_error(
+        "Instead, please try using root=true property in the distrobox.ini file."
+    )
     return 1
 
 
@@ -370,7 +399,7 @@ def _download_file(url: str, timeout: int = 3) -> str | None:
     """
     try:
         with urlopen(url, timeout=timeout) as response:
-            return response.read().decode("utf-8")
+            return str(response.read().decode("utf-8"))
     except (URLError, ValueError):
         # ValueError is raised for invalid URLs (e.g., file paths)
         return None
@@ -439,7 +468,7 @@ def _decode_hooks(encoded_hooks: list[str]) -> str:
         args = f"{args} {separator} {decoded}"
 
         # Add && separator unless line ends with ; or &&
-        if not re.search(r';\s*$', decoded) and not re.search(r'&&\s*$', decoded):
+        if not re.search(r";\s*$", decoded) and not re.search(r"&&\s*$", decoded):
             separator = "&&"
         else:
             separator = ""
@@ -550,12 +579,17 @@ def _run_exports(
         for app in apps.split():
             if not app:
                 continue
-            enter_run([
-                *root_args,
-                "-n", name,
-                "--",
-                "distrobox-export", "--app", app,
-            ])
+            enter_run(
+                [
+                    *root_args,
+                    "-n",
+                    name,
+                    "--",
+                    "distrobox-export",
+                    "--app",
+                    app,
+                ]
+            )
 
     # Export bins
     for bins in spec.exported_bins:
@@ -563,13 +597,19 @@ def _run_exports(
         for bin_path in bins.split():
             if not bin_path:
                 continue
-            enter_run([
-                *root_args,
-                "-n", name,
-                "--",
-                "distrobox-export", "--bin", bin_path,
-                "--export-path", export_path,
-            ])
+            enter_run(
+                [
+                    *root_args,
+                    "-n",
+                    name,
+                    "--",
+                    "distrobox-export",
+                    "--bin",
+                    bin_path,
+                    "--export-path",
+                    export_path,
+                ]
+            )
 
     return 0
 
@@ -599,7 +639,7 @@ def run(args: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    delete = (parsed.action == "rm")
+    delete = parsed.action == "rm"
 
     # Load config
     config = Config.load()
@@ -610,13 +650,15 @@ def run(args: list[str] | None = None) -> int:
     input_file = parsed.file or "./distrobox.ini"
 
     # Load manifest (file or URL)
+    content: str
     if Path(input_file).exists():
         content = Path(input_file).read_text()
     else:
-        content = _download_file(input_file)
-        if content is None:
+        downloaded = _download_file(input_file)
+        if downloaded is None:
             print_error(f"[error]File {input_file} does not exist.[/error]")
             return 1
+        content = downloaded
 
     # Parse manifest
     try:
@@ -633,9 +675,9 @@ def run(args: list[str] | None = None) -> int:
         specs = {parsed.name: specs[parsed.name]}
 
     # Import commands here to avoid circular imports
-    from .rm import run as rm_run
     from .create import run as create_run
     from .enter import run as enter_run
+    from .rm import run as rm_run
 
     # Process each container
     for name, spec in specs.items():

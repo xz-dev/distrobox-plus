@@ -81,9 +81,7 @@ def assert_output_contains(
     output = result.stderr if in_stderr else result.stdout
     if text not in output:
         source = "stderr" if in_stderr else "stdout"
-        raise AssertionError(
-            f"Expected '{text}' in {source}, but got:\n{output}"
-        )
+        raise AssertionError(f"Expected '{text}' in {source}, but got:\n{output}")
 
 
 def assert_output_matches(

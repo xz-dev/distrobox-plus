@@ -38,7 +38,7 @@ class TestStopBasic:
         This should succeed without error (idempotent operation).
         """
         # Container was created but never started, so it's stopped
-        result = distrobox.stop(created_container)
+        distrobox.stop(created_container)  # Result intentionally ignored
 
         # Should succeed (or at least not crash)
         # Some implementations may return success, others may indicate it's already stopped

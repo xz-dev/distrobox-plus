@@ -13,15 +13,22 @@ import sys
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ..config import VERSION, Config, DEFAULT_IMAGE, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..config import (
+    DEFAULT_IMAGE,
+    DEFAULT_NAME,
+    VERSION,
+    Config,
+    check_sudo_doas,
+    get_user_info,
+)
 from ..container import detect_container_manager
-from ..utils.console import is_tty, print_error, print_status, yellow, red, green
+from ..utils.console import green, is_tty, print_error, print_status, red, yellow
 from ..utils.helpers import (
-    prompt_yes_no,
     InvalidInputError,
-    filter_env_for_container,
     build_container_path,
+    filter_env_for_container,
     get_command_path,
+    prompt_yes_no,
 )
 
 if TYPE_CHECKING:
@@ -40,11 +47,13 @@ def create_parser() -> argparse.ArgumentParser:
         help="Container name (positional)",
     )
     parser.add_argument(
-        "-n", "--name",
+        "-n",
+        "--name",
         help=f"Name of the distrobox (default: {DEFAULT_NAME})",
     )
     parser.add_argument(
-        "-e", "--exec",
+        "-e",
+        "--exec",
         dest="exec_flag",
         action="store_true",
         help="Execute command (for compatibility)",
@@ -55,43 +64,52 @@ def create_parser() -> argparse.ArgumentParser:
         help="Reset PATH to FHS standard",
     )
     parser.add_argument(
-        "-T", "-H", "--no-tty",
+        "-T",
+        "-H",
+        "--no-tty",
         action="store_true",
         help="Don't allocate a TTY",
     )
     parser.add_argument(
-        "-nw", "--no-workdir",
+        "-nw",
+        "--no-workdir",
         action="store_true",
         help="Start from container's home directory",
     )
     parser.add_argument(
-        "-a", "--additional-flags",
+        "-a",
+        "--additional-flags",
         action="append",
         default=[],
         help="Additional flags for container manager",
     )
     parser.add_argument(
-        "-d", "--dry-run",
+        "-d",
+        "--dry-run",
         action="store_true",
         help="Print command without executing",
     )
     parser.add_argument(
-        "-Y", "--yes",
+        "-Y",
+        "--yes",
         action="store_true",
         help="Non-interactive mode",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="Launch with root privileges",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -218,7 +236,9 @@ def wait_for_container_setup(
         True if setup completed successfully
     """
     # Get timestamp for log filtering
-    log_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000000000+00:00")
+    log_timestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.000000000+00:00"
+    )
 
     print_status("Starting container...")
 
@@ -230,7 +250,14 @@ def wait_for_container_setup(
             return False
 
         # Start logs process
-        logs_cmd = [*manager._cmd_prefix, "logs", "--since", log_timestamp, "-f", container_name]
+        logs_cmd = [
+            *manager._cmd_prefix,
+            "logs",
+            "--since",
+            log_timestamp,
+            "-f",
+            container_name,
+        ]
         logs_proc = subprocess.Popen(
             logs_cmd,
             stdout=subprocess.PIPE,
@@ -291,11 +318,11 @@ def run(args: list[str] | None = None) -> int:
     if "--" in args:
         idx = args.index("--")
         distrobox_args = args[:idx]
-        container_command = args[idx + 1:]
+        container_command = args[idx + 1 :]
     elif "-e" in args:
         idx = args.index("-e")
         distrobox_args = args[:idx]
-        container_command = args[idx + 1:]
+        container_command = args[idx + 1 :]
 
     # Parse arguments
     parser = create_parser()
@@ -317,7 +344,9 @@ def run(args: list[str] | None = None) -> int:
         config.skip_workdir = True
 
     # Determine container name
-    container_name = parsed.name or parsed.name_positional or config.container_name or DEFAULT_NAME
+    container_name = (
+        parsed.name or parsed.name_positional or config.container_name or DEFAULT_NAME
+    )
 
     # Determine if headless
     headless = parsed.no_tty or not is_tty()
@@ -328,9 +357,9 @@ def run(args: list[str] | None = None) -> int:
     additional_flags = []
     for flag in parsed.additional_flags:
         # Convert "--flag value" to "--flag=value" (only for alphabetic flags)
-        converted = re.sub(r'(--[a-zA-Z]+) ([^ ]+)', r'\1=\2', flag)
+        converted = re.sub(r"(--[a-zA-Z]+) ([^ ]+)", r"\1=\2", flag)
         # Split on " --" to handle multiple flags in one argument
-        parts = converted.replace(' --', '\n--').split('\n')
+        parts = converted.replace(" --", "\n--").split("\n")
         for part in parts:
             part = part.strip()
             if part:
@@ -347,7 +376,9 @@ def run(args: list[str] | None = None) -> int:
     # Get container info
     user, home, _ = get_user_info()
     container_home = manager.get_container_home(container_name) or home
-    container_path = manager.get_container_path(container_name) or os.environ.get("PATH", "")
+    container_path = manager.get_container_path(container_name) or os.environ.get(
+        "PATH", ""
+    )
     unshare_groups = manager.get_unshare_groups(container_name)
 
     # Check container status
@@ -370,7 +401,9 @@ def run(args: list[str] | None = None) -> int:
         if container_command:
             cmd.extend(container_command)
         else:
-            cmd.extend(["/bin/sh", "-c", f"$(getent passwd '{user}' | cut -f 7 -d :) -l"])
+            cmd.extend(
+                ["/bin/sh", "-c", f"$(getent passwd '{user}' | cut -f 7 -d :) -l"]
+            )
         # Include container manager prefix (like original distrobox)
         full_cmd = manager.cmd_prefix + cmd
         print(" ".join(full_cmd))
@@ -382,7 +415,9 @@ def run(args: list[str] | None = None) -> int:
             try:
                 if not prompt_yes_no(f"Create it now, out of image {DEFAULT_IMAGE}?"):
                     print_error("Ok. For creating it, run this command:")
-                    print_error("\tdistrobox create <name-of-container> --image <remote>/<docker>:<tag>")
+                    print_error(
+                        "\tdistrobox create <name-of-container> --image <remote>/<docker>:<tag>"
+                    )
                     return 0
             except InvalidInputError as e:
                 print_error(red(str(e)))
@@ -392,6 +427,7 @@ def run(args: list[str] | None = None) -> int:
         # Create the container using built-in create command
         print_error(f"Creating container {container_name}...")
         from .create import run as create_run
+
         create_args = ["--yes", "-i", DEFAULT_IMAGE, "-n", container_name]
         if config.rootful:
             create_args.insert(0, "--root")

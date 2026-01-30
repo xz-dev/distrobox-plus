@@ -41,7 +41,8 @@ Examples:
         help="Name(s) of container(s) to upgrade",
     )
     parser.add_argument(
-        "-a", "--all",
+        "-a",
+        "--all",
         action="store_true",
         help="perform for all distroboxes",
     )
@@ -51,19 +52,22 @@ Examples:
         help="perform only for running distroboxes",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="launch podman/docker/lilipod with root privileges. Note that if you need root this is the preferred "
         "way over \"sudo distrobox\" (note: if using a program other than 'sudo' for root privileges is necessary, "
         "specify it through the DBX_SUDO_PROGRAM env variable, or 'distrobox_sudo_program' config variable)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )

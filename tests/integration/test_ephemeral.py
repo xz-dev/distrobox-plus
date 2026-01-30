@@ -137,7 +137,9 @@ class TestEphemeralSplitArgs:
     @pytest.mark.fast
     def test_split_args_with_double_dash(self):
         """Test splitting args at --."""
-        ephemeral_args, container_cmd = _split_args(["--name", "test", "--", "echo", "hello"])
+        ephemeral_args, container_cmd = _split_args(
+            ["--name", "test", "--", "echo", "hello"]
+        )
 
         assert ephemeral_args == ["--name", "test"]
         assert container_cmd == ["echo", "hello"]

@@ -7,7 +7,6 @@ import pytest
 from tests.helpers.assertions import (
     assert_command_success,
     assert_container_in_list,
-    assert_container_not_in_list,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.list]
@@ -28,9 +27,7 @@ class TestListBasic:
         assert_command_success(result)
 
     @pytest.mark.fast
-    def test_list_shows_created_container(
-        self, distrobox, created_container
-    ):
+    def test_list_shows_created_container(self, distrobox, created_container):
         """Test that a created container appears in the list."""
         result = distrobox.list()
 
@@ -38,9 +35,7 @@ class TestListBasic:
         assert_container_in_list(result, created_container)
 
     @pytest.mark.fast
-    def test_list_shows_image_name(
-        self, distrobox, created_container
-    ):
+    def test_list_shows_image_name(self, distrobox, created_container):
         """Test that the image name is shown in the list."""
         result = distrobox.list()
 
@@ -49,9 +44,7 @@ class TestListBasic:
         assert "alpine" in result.stdout.lower()
 
     @pytest.mark.fast
-    def test_list_shows_status(
-        self, distrobox, created_container
-    ):
+    def test_list_shows_status(self, distrobox, created_container):
         """Test that container status is shown in the list."""
         result = distrobox.list()
 

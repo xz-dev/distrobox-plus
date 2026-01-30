@@ -144,7 +144,11 @@ class TestUpgradeNoArgs:
         result = distrobox.run("upgrade", [])
 
         # Should show help (contains usage info)
-        assert "usage:" in result.stdout.lower() or "upgrade" in result.stdout.lower() or "upgrade" in result.stderr.lower()
+        assert (
+            "usage:" in result.stdout.lower()
+            or "upgrade" in result.stdout.lower()
+            or "upgrade" in result.stderr.lower()
+        )
         # Should exit 0
         assert result.returncode == 0
 

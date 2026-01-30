@@ -9,14 +9,14 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from importlib.metadata import version as get_version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import platformdirs
-from importlib.metadata import version as get_version
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 
 def _get_version() -> str:
@@ -27,14 +27,15 @@ def _get_version() -> str:
         return get_version(pkg)
     except Exception:
         # Development mode: read from pyproject.toml directly
-        import tomllib
         from pathlib import Path
+
+        import tomllib  # type: ignore[import-not-found]
 
         pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
         if pyproject.exists():
             with open(pyproject, "rb") as f:
                 data = tomllib.load(f)
-            return data.get("project", {}).get("version", "unknown")
+            return str(data.get("project", {}).get("version", "unknown"))
         raise
 
 
@@ -65,6 +66,7 @@ def get_config_paths() -> list[Path]:
     # Original: self_dir="$(dirname "$(realpath "$0")")"
     # Original: nix_config_file="${self_dir}/../share/distrobox/distrobox.conf"
     from .utils.helpers import get_command_path
+
     self_path = get_command_path()
     if self_path:
         nix_config = self_path.parent.parent / "share" / "distrobox" / "distrobox.conf"
@@ -117,13 +119,14 @@ def parse_config_file(path: Path) -> dict[str, str]:
             continue
 
         # Match VAR=value patterns
-        match = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
         if match:
             key = match.group(1)
             value = match.group(2).strip()
             # Remove surrounding quotes
-            if (value.startswith('"') and value.endswith('"')) or \
-               (value.startswith("'") and value.endswith("'")):
+            if (value.startswith('"') and value.endswith('"')) or (
+                value.startswith("'") and value.endswith("'")
+            ):
                 value = value[1:-1]
             config[key] = value
 
@@ -137,6 +140,7 @@ class Config:
     All values default to None, allowing detection of which were explicitly set.
     The original distrobox handles booleans as strings "true"/"false" or 0/1.
     """
+
     container_manager: str | None = None
     container_name: str | None = None
     container_image: str | None = None

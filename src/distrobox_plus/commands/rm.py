@@ -12,10 +12,10 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas, get_user_info
+from ..config import DEFAULT_NAME, VERSION, Config, check_sudo_doas, get_user_info
 from ..container import detect_container_manager
-from ..utils.console import print_msg, print_error, red
-from ..utils.helpers import prompt_yes_no, InvalidInputError
+from ..utils.console import print_error, print_msg
+from ..utils.helpers import InvalidInputError, prompt_yes_no
 from .list import list_containers
 
 if TYPE_CHECKING:
@@ -34,12 +34,14 @@ def create_parser() -> argparse.ArgumentParser:
         help="Container name(s) to remove",
     )
     parser.add_argument(
-        "-a", "--all",
+        "-a",
+        "--all",
         action="store_true",
         help="Delete all distroboxes",
     )
     parser.add_argument(
-        "-f", "--force",
+        "-f",
+        "--force",
         action="store_true",
         help="Force deletion (implies --yes)",
     )
@@ -49,22 +51,26 @@ def create_parser() -> argparse.ArgumentParser:
         help="Remove the mounted home if it differs from host user's one",
     )
     parser.add_argument(
-        "-Y", "--yes",
+        "-Y",
+        "--yes",
         action="store_true",
         help="Non-interactive, delete without asking",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="Launch container manager with root privileges",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -103,7 +109,10 @@ def cleanup_exported_binaries(container_name: str) -> None:
         try:
             content = binary.read_text()
             # Check if this binary was exported by distrobox for this container
-            if "# distrobox_binary" in content and f"# name: {container_name}" in content:
+            if (
+                "# distrobox_binary" in content
+                and f"# name: {container_name}" in content
+            ):
                 print_msg(f"Removing exported binary {binary}...")
                 binary.unlink()
         except (OSError, UnicodeDecodeError):
@@ -331,8 +340,7 @@ def run(args: list[str] | None = None) -> int:
 
         # Collect running containers first
         running_containers = [
-            name for name in container_names
-            if manager.is_running(name)
+            name for name in container_names if manager.is_running(name)
         ]
 
         # If there are running containers, ask once for all of them

@@ -11,10 +11,13 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .utils.exceptions import ContainerManagerNotFoundError, InvalidContainerManagerError
+from .utils.exceptions import (
+    ContainerManagerNotFoundError,
+    InvalidContainerManagerError,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 SUPPORTED_MANAGERS = ("podman", "podman-launcher", "docker", "lilipod")
 
@@ -29,6 +32,7 @@ class ContainerManager:
     Provides a consistent interface for container operations across
     different container managers.
     """
+
     name: str
     path: str
     verbose: bool = False
@@ -133,6 +137,7 @@ class ContainerManager:
             *args: Command arguments to pass to the container manager
         """
         import os
+
         cmd = [*self._cmd_prefix, *args]
         os.execvp(cmd[0], cmd)
 
@@ -428,8 +433,7 @@ class ContainerManager:
             return False
 
         result = self.run(
-            "run", "--rm", f"--userns=keep-id:size={USERNS_SIZE}",
-            image, "/bin/true"
+            "run", "--rm", f"--userns=keep-id:size={USERNS_SIZE}", image, "/bin/true"
         )
         # Success or command not found (127) means feature is supported
         return result.returncode in (0, 127)

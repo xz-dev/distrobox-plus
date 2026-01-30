@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from tests.helpers.assertions import (
@@ -11,7 +9,6 @@ from tests.helpers.assertions import (
     assert_command_success,
     assert_container_exists,
     assert_container_not_exists,
-    assert_output_contains,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.create]
@@ -109,7 +106,10 @@ class TestCreateVolumes:
 
         container_cleanup.append(test_container_name)
 
-        with tempfile.TemporaryDirectory() as vol1, tempfile.TemporaryDirectory() as vol2:
+        with (
+            tempfile.TemporaryDirectory() as vol1,
+            tempfile.TemporaryDirectory() as vol2,
+        ):
             result = distrobox.create(
                 test_container_name,
                 volume=[f"{vol1}:/mnt/vol1", f"{vol2}:/mnt/vol2"],
@@ -138,9 +138,7 @@ class TestCreatePackages:
         assert_command_success(result)
 
         # Verify package is installed
-        enter_result = distrobox.enter(
-            test_container_name, command="which curl"
-        )
+        enter_result = distrobox.enter(test_container_name, command="which curl")
         assert_command_success(enter_result)
 
 
@@ -173,7 +171,10 @@ class TestCreateDryRun:
         assert_command_success(result)
         assert_container_not_exists(distrobox, test_container_name)
         # Dry run should output the command that would be executed
-        assert distrobox.container_manager in result.output or "create" in result.output.lower()
+        assert (
+            distrobox.container_manager in result.output
+            or "create" in result.output.lower()
+        )
 
 
 class TestCreateErrors:

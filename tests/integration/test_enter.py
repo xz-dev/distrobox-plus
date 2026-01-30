@@ -10,8 +10,6 @@ import pytest
 from tests.helpers.assertions import (
     assert_command_failed,
     assert_command_success,
-    assert_output_contains,
-    assert_output_matches,
 )
 
 # All enter tests are slow because first entry triggers container initialization
@@ -106,7 +104,7 @@ class TestEnterWorkingDirectory:
 
     def test_enter_preserves_workdir(self, distrobox, created_container):
         """Test that current working directory is preserved."""
-        host_cwd = os.getcwd()
+        _host_cwd = os.getcwd()  # noqa: F841
 
         result = distrobox.enter(created_container, command="pwd")
 
@@ -117,9 +115,7 @@ class TestEnterWorkingDirectory:
 
     def test_enter_no_workdir_flag(self, distrobox, created_container):
         """Test --no-workdir flag uses container's home."""
-        result = distrobox.enter(
-            created_container, command="pwd", no_workdir=True
-        )
+        result = distrobox.enter(created_container, command="pwd", no_workdir=True)
 
         assert_command_success(result)
         # Should be in home directory, not host's cwd
@@ -132,9 +128,7 @@ class TestEnterTTY:
 
     def test_enter_no_tty_mode(self, distrobox, created_container):
         """Test --no-tty mode for non-interactive commands."""
-        result = distrobox.enter(
-            created_container, command="echo test", no_tty=True
-        )
+        result = distrobox.enter(created_container, command="echo test", no_tty=True)
 
         assert_command_success(result)
         assert "test" in result.stdout
@@ -166,8 +160,6 @@ class TestEnterErrors:
 
     def test_enter_invalid_command_fails(self, distrobox, created_container):
         """Test that an invalid command fails appropriately."""
-        result = distrobox.enter(
-            created_container, command="nonexistent-command-12345"
-        )
+        result = distrobox.enter(created_container, command="nonexistent-command-12345")
 
         assert_command_failed(result)

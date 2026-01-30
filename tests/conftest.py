@@ -61,8 +61,6 @@ def pytest_collection_modifyitems(
         return
 
     # Filter tests to only run for the specified implementation
-    skip_impl = pytest.mark.skip(reason=f"Only running {implementation} implementation")
-
     for item in items:
         if "implementation" in item.fixturenames:
             # The fixture will handle filtering
@@ -181,7 +179,11 @@ class DistroboxImplementation:
             args.extend(["--home", kwargs["home"]])
 
         if "volume" in kwargs:
-            for vol in kwargs["volume"] if isinstance(kwargs["volume"], list) else [kwargs["volume"]]:
+            for vol in (
+                kwargs["volume"]
+                if isinstance(kwargs["volume"], list)
+                else [kwargs["volume"]]
+            ):
                 args.extend(["--volume", vol])
 
         if "additional_packages" in kwargs:
@@ -206,7 +208,11 @@ class DistroboxImplementation:
         if kwargs.get("unshare_all"):
             args.append("--unshare-all")
 
-        return self.run("create", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")})
+        return self.run(
+            "create",
+            args,
+            **{k: v for k, v in kwargs.items() if k in ("check", "timeout")},
+        )
 
     def enter(self, name: str, **kwargs) -> CommandResult:
         """Enter a distrobox container.
@@ -247,7 +253,11 @@ class DistroboxImplementation:
         if kwargs.get("no_color"):
             args.append("--no-color")
 
-        return self.run("list", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")})
+        return self.run(
+            "list",
+            args,
+            **{k: v for k, v in kwargs.items() if k in ("check", "timeout")},
+        )
 
     def stop(self, name: str | None = None, **kwargs) -> CommandResult:
         """Stop distrobox container(s).
@@ -266,7 +276,11 @@ class DistroboxImplementation:
         if name:
             args.append(name)
 
-        return self.run("stop", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")})
+        return self.run(
+            "stop",
+            args,
+            **{k: v for k, v in kwargs.items() if k in ("check", "timeout")},
+        )
 
     def rm(self, name: str | None = None, **kwargs) -> CommandResult:
         """Remove distrobox container(s).
@@ -288,7 +302,9 @@ class DistroboxImplementation:
         if name:
             args.append(name)
 
-        return self.run("rm", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")})
+        return self.run(
+            "rm", args, **{k: v for k, v in kwargs.items() if k in ("check", "timeout")}
+        )
 
     def container_exists(self, name: str) -> bool:
         """Check if a container exists."""
@@ -340,7 +356,9 @@ def keep_containers(request: pytest.FixtureRequest) -> bool:
     return request.config.getoption("--keep-containers")
 
 
-def _get_implementations(request: pytest.FixtureRequest, container_manager: str) -> list[str]:
+def _get_implementations(
+    request: pytest.FixtureRequest, container_manager: str
+) -> list[str]:
     """Get list of implementations to test based on command line option."""
     impl_option = request.config.getoption("--implementation")
     if impl_option == "both":
@@ -359,7 +377,9 @@ def implementation(
     if impl_option != "both" and request.param != impl_option:
         pytest.skip(f"Skipping {request.param} (--implementation={impl_option})")
 
-    return DistroboxImplementation(name=request.param, container_manager=container_manager)
+    return DistroboxImplementation(
+        name=request.param, container_manager=container_manager
+    )
 
 
 @pytest.fixture

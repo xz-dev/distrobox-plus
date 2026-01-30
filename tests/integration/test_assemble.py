@@ -648,11 +648,15 @@ image=alpine:latest
 init=false
 """)
 
-        result = distrobox.run("assemble", [
-            "create",
-            "--dry-run",
-            "--file", str(manifest),
-        ])
+        result = distrobox.run(
+            "assemble",
+            [
+                "create",
+                "--dry-run",
+                "--file",
+                str(manifest),
+            ],
+        )
 
         # Should print the create command
         assert "distrobox-create" in result.stdout
@@ -671,10 +675,14 @@ class TestAssembleMissingFile:
     @pytest.mark.fast
     def test_assemble_missing_file(self, distrobox):
         """Test that missing file returns error."""
-        result = distrobox.run("assemble", [
-            "create",
-            "--file", "/nonexistent/path/to/file.ini",
-        ])
+        result = distrobox.run(
+            "assemble",
+            [
+                "create",
+                "--file",
+                "/nonexistent/path/to/file.ini",
+            ],
+        )
 
         assert "does not exist" in result.stderr
         assert result.returncode == 1

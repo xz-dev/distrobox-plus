@@ -48,7 +48,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create argument parser for distrobox-ephemeral."""
     user, _, _ = get_user_info()
 
-    epilog = f"""\
+    epilog = """\
 This command also inherits all flags from distrobox-create.
 Use -- or -e to pass commands to execute inside the container.
 
@@ -68,44 +68,52 @@ Examples:
         add_help=False,  # We handle help ourselves to also show create options
     )
     parser.add_argument(
-        "-h", "--help",
+        "-h",
+        "--help",
         action="store_true",
         help="show this help message and exit",
     )
     parser.add_argument(
-        "-n", "--name",
+        "-n",
+        "--name",
         help="name for the ephemeral container (default: random)",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="launch podman/docker/lilipod with root privileges",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
     parser.add_argument(
-        "-e", "--exec",
+        "-e",
+        "--exec",
         dest="exec_delimiter",
         action="store_true",
         help=f"end arguments, execute the rest as command (default: {user}'s shell)",
     )
     # These are handled specially to be passed to create
     parser.add_argument(
-        "-a", "--additional-flags",
+        "-a",
+        "--additional-flags",
         action="append",
         default=[],
         help="additional flags to pass to the container manager command",
     )
     parser.add_argument(
-        "-ap", "--additional-packages",
+        "-ap",
+        "--additional-packages",
         action="append",
         default=[],
         help="additional packages to install during initial container setup",
@@ -163,7 +171,7 @@ def _split_args(args: list[str]) -> tuple[list[str], list[str]]:
     """
     for i, arg in enumerate(args):
         if arg in ("--", "-e", "--exec"):
-            return args[:i], args[i + 1:]
+            return args[:i], args[i + 1 :]
     return args, []
 
 
@@ -292,6 +300,7 @@ def _create_cleanup_handler(
     Returns:
         Tuple of (cleanup_func, setup_signals_func)
     """
+
     def cleanup(signum: int | None = None, frame: FrameType | None = None) -> None:
         """Clean up the ephemeral container."""
         # Reset signal handlers

@@ -10,10 +10,10 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-from ..config import VERSION, Config, DEFAULT_NAME, check_sudo_doas
+from ..config import DEFAULT_NAME, VERSION, Config, check_sudo_doas
 from ..container import detect_container_manager
-from ..utils.console import print_msg, print_error, red
-from ..utils.helpers import prompt_yes_no, InvalidInputError
+from ..utils.console import print_error, print_msg
+from ..utils.helpers import InvalidInputError, prompt_yes_no
 from .list import list_containers
 
 if TYPE_CHECKING:
@@ -32,27 +32,32 @@ def create_parser() -> argparse.ArgumentParser:
         help="Container name(s) to stop",
     )
     parser.add_argument(
-        "-a", "--all",
+        "-a",
+        "--all",
         action="store_true",
         help="Stop all distroboxes",
     )
     parser.add_argument(
-        "-Y", "--yes",
+        "-Y",
+        "--yes",
         action="store_true",
         help="Non-interactive, stop without asking",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="Launch container manager with root privileges",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )

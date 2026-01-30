@@ -10,9 +10,11 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from rich.table import Table
+
 from ..config import VERSION, Config, check_sudo_doas
 from ..container import detect_container_manager
-from ..utils.console import console, print_msg, create_container_table
+from ..utils.console import console
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
@@ -30,17 +32,20 @@ def create_parser() -> argparse.ArgumentParser:
         help="Disable color formatting",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="Launch container manager with root privileges",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -98,7 +103,11 @@ def print_containers(
         containers: List of container dicts
         no_color: Disable color output
     """
-    table = create_container_table()
+    table = Table(show_header=True, header_style="bold", box=None)
+    table.add_column("ID", no_wrap=True)
+    table.add_column("NAME", no_wrap=True)
+    table.add_column("STATUS", no_wrap=True)
+    table.add_column("IMAGE", no_wrap=True)
 
     for container in containers:
         container_id = container["id"]

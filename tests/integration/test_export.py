@@ -122,7 +122,9 @@ class TestExportParser:
         """Test parsing --extra-flags."""
         parser = create_parser()
         # Note: value is passed as a single string
-        args = parser.parse_args(["--bin", "/usr/bin/vim", "--extra-flags", "debug-mode"])
+        args = parser.parse_args(
+            ["--bin", "/usr/bin/vim", "--extra-flags", "debug-mode"]
+        )
 
         assert args.extra_flags == "debug-mode"
 
@@ -131,7 +133,9 @@ class TestExportParser:
         """Test parsing --enter-flags."""
         parser = create_parser()
         # Note: value is passed as a single string
-        args = parser.parse_args(["--bin", "/usr/bin/vim", "--enter-flags", "no-workdir"])
+        args = parser.parse_args(
+            ["--bin", "/usr/bin/vim", "--enter-flags", "no-workdir"]
+        )
 
         assert args.enter_flags == "no-workdir"
 

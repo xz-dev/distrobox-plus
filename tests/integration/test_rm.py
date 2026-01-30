@@ -18,7 +18,9 @@ class TestRmBasic:
     """Basic remove command tests."""
 
     @pytest.mark.fast
-    def test_rm_stopped_container(self, distrobox, created_container, container_cleanup):
+    def test_rm_stopped_container(
+        self, distrobox, created_container, container_cleanup
+    ):
         """Test removing a stopped container."""
         # Remove from cleanup list since we're explicitly removing
         container_cleanup.remove(created_container)
@@ -63,7 +65,9 @@ class TestRmNonexistent:
         # distrobox-rm doesn't fail, it just prints a warning
         assert_command_success(result)
         # But it should mention the container wasn't found
-        assert "cannot find" in result.stderr.lower() or "no such" in result.stderr.lower()
+        assert (
+            "cannot find" in result.stderr.lower() or "no such" in result.stderr.lower()
+        )
 
 
 class TestRmMultiple:
@@ -97,9 +101,7 @@ class TestRmAll:
     """Remove all containers tests."""
 
     @pytest.mark.fast
-    def test_rm_all_containers(
-        self, distrobox, test_container_name, container_cleanup
-    ):
+    def test_rm_all_containers(self, distrobox, test_container_name, container_cleanup):
         """Test removing all distrobox containers.
 
         Note: This test only verifies test containers are removed.
@@ -132,9 +134,7 @@ class TestRmRunningWithoutForce:
     """Tests for removing running containers without force flag."""
 
     @pytest.mark.slow  # running_container triggers container initialization
-    def test_rm_running_without_force_fails(
-        self, distrobox, running_container
-    ):
+    def test_rm_running_without_force_fails(self, distrobox, running_container):
         """Test that removing a running container without force fails."""
         result = distrobox.rm(running_container)
 

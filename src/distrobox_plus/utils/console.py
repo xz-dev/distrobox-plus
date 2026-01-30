@@ -5,17 +5,18 @@ from __future__ import annotations
 import sys
 
 from rich.console import Console
-from rich.table import Table
 from rich.theme import Theme
 
 # Custom theme matching distrobox colors
-DISTROBOX_THEME = Theme({
-    "ok": "green",
-    "error": "bold red",
-    "warning": "yellow",
-    "container.running": "green",
-    "container.stopped": "yellow",
-})
+DISTROBOX_THEME = Theme(
+    {
+        "ok": "green",
+        "error": "bold red",
+        "warning": "yellow",
+        "container.running": "green",
+        "container.stopped": "yellow",
+    }
+)
 
 # stdout console
 console = Console(theme=DISTROBOX_THEME)
@@ -52,20 +53,6 @@ def red(text: str) -> str:
 def green(text: str) -> str:
     """Return text wrapped in green/ok markup."""
     return f"[ok]{text}[/ok]"
-
-
-def create_container_table() -> Table:
-    """Create a table for container listing.
-
-    Note: no_wrap=True ensures each row stays on one line for script parsing.
-    No fixed width is set so columns auto-expand to fit content.
-    """
-    table = Table(show_header=True, header_style="bold", box=None)
-    table.add_column("ID", no_wrap=True)
-    table.add_column("NAME", no_wrap=True)
-    table.add_column("STATUS", no_wrap=True)
-    table.add_column("IMAGE", no_wrap=True)
-    return table
 
 
 def is_tty() -> bool:

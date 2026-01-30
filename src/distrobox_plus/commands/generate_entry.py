@@ -80,33 +80,39 @@ def create_parser() -> argparse.ArgumentParser:
         help="name of the container (default: my-distrobox)",
     )
     parser.add_argument(
-        "-a", "--all",
+        "-a",
+        "--all",
         action="store_true",
         dest="all_containers",
         help="perform for all distroboxes",
     )
     parser.add_argument(
-        "-d", "--delete",
+        "-d",
+        "--delete",
         action="store_true",
         help="delete the entry",
     )
     parser.add_argument(
-        "-i", "--icon",
+        "-i",
+        "--icon",
         default="auto",
         help="specify a custom icon [/path/to/icon] (default: auto)",
     )
     parser.add_argument(
-        "-r", "--root",
+        "-r",
+        "--root",
         action="store_true",
         help="perform on rootful distroboxes",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -195,7 +201,12 @@ def _get_container_distro(
 
     try:
         # Copy /etc/os-release from container
-        cmd = [*manager.cmd_prefix, *cp_args, f"{container_name}:/etc/os-release", tmp_path]
+        cmd = [
+            *manager.cmd_prefix,
+            *cp_args,
+            f"{container_name}:/etc/os-release",
+            tmp_path,
+        ]
         result = subprocess.run(cmd, capture_output=True)
 
         if result.returncode != 0:
@@ -218,7 +229,9 @@ def _get_container_distro(
         # Clean up temp file
         try:
             if config.rootful:
-                subprocess.run([config.sudo_program, "rm", "-f", tmp_path], capture_output=True)
+                subprocess.run(
+                    [config.sudo_program, "rm", "-f", tmp_path], capture_output=True
+                )
             else:
                 os.unlink(tmp_path)
         except OSError:
@@ -264,13 +277,14 @@ def _resolve_icon(
     # Try to detect container distribution
     container_distro = _get_container_distro(manager, container_name, config)
 
+    icon_url: str
     if container_distro is None:
         container_distro = "terminal-distrobox-icon"
         icon_url = DEFAULT_ICON_URL
     else:
         # Look up icon URL
-        icon_url = DISTRO_ICON_MAP.get(container_distro)
-        if icon_url is None:
+        maybe_url = DISTRO_ICON_MAP.get(container_distro)
+        if maybe_url is None:
             print(
                 "Warning: Distribution not found in default icon set. "
                 "Defaulting to generic one.",
@@ -278,6 +292,8 @@ def _resolve_icon(
             )
             container_distro = "terminal-distrobox-icon"
             icon_url = DEFAULT_ICON_URL
+        else:
+            icon_url = maybe_url
 
     # Ensure icons directory exists
     icons_dir = _get_icons_dir()

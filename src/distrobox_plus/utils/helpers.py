@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 # RFC 1123: hostname max length is 64 characters
 MAX_HOSTNAME_LENGTH = 64
@@ -58,8 +58,7 @@ def prompt_yes_no(
 
     # Invalid input - raise exception like original shell script
     raise InvalidInputError(
-        "Invalid input.\n"
-        "The available choices are: y,Y,Yes,yes,YES or n,N,No,no,NO."
+        "Invalid input.\nThe available choices are: y,Y,Yes,yes,YES or n,N,No,no,NO."
     )
 
 
@@ -123,8 +122,8 @@ def get_script_path(script_name: str) -> Path | None:
             return same_dir
 
     # Fall back to PATH lookup
-    path = shutil.which(script_name)
-    return Path(path) if path else None
+    which_path = shutil.which(script_name)
+    return Path(which_path) if which_path else None
 
 
 def derive_container_name(image: str) -> str:
@@ -145,13 +144,14 @@ def derive_container_name(image: str) -> str:
     # Get basename of image
     name = Path(image).name
     # Replace : and . with -
-    name = re.sub(r'[:.]', '-', name)
+    name = re.sub(r"[:.]", "-", name)
     return name
 
 
 def get_hostname() -> str:
     """Get the system hostname."""
     import socket
+
     return socket.gethostname()
 
 
@@ -178,6 +178,7 @@ def find_ro_mountpoints() -> set[str]:
     try:
         # Use findmnt to get mount options
         import subprocess
+
         result = subprocess.run(
             ["findmnt", "--noheadings", "--list", "--output", "TARGET,OPTIONS"],
             capture_output=True,
@@ -189,7 +190,7 @@ def find_ro_mountpoints() -> set[str]:
                 if len(parts) == 2:
                     target, options = parts
                     # Check if 'ro' is in options
-                    if re.search(r'\bro\b', options):
+                    if re.search(r"\bro\b", options):
                         ro_mounts.add(target)
     except (OSError, subprocess.SubprocessError):
         pass
@@ -255,6 +256,7 @@ def get_xdg_runtime_dir() -> Path | None:
 def get_cache_dir() -> Path:
     """Get distrobox cache directory."""
     import platformdirs
+
     return Path(platformdirs.user_cache_dir("distrobox"))
 
 
@@ -268,6 +270,7 @@ def escape_for_shell(s: str) -> str:
         Shell-escaped string
     """
     import shlex
+
     return shlex.quote(s)
 
 
@@ -311,7 +314,7 @@ def filter_env_for_container() -> dict[str, str]:
             continue
 
         # Skip if contains special characters
-        if any(c in value for c in ('"', '`', '$')):
+        if any(c in value for c in ('"', "`", "$")):
             continue
 
         result[key] = value

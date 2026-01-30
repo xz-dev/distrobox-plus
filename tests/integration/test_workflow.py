@@ -75,9 +75,7 @@ class TestFullLifecycle:
         distrobox.enter(name, command="touch /tmp/test-file-2", check=True)
 
         # Verify both files exist
-        result = distrobox.enter(
-            name, command="ls /tmp/test-file-1 /tmp/test-file-2"
-        )
+        result = distrobox.enter(name, command="ls /tmp/test-file-1 /tmp/test-file-2")
         assert_command_success(result)
         assert "test-file-1" in result.stdout
         assert "test-file-2" in result.stdout
@@ -86,9 +84,7 @@ class TestFullLifecycle:
 class TestMultiDistroWorkflow:
     """Multi-distribution workflow tests."""
 
-    def test_multi_distro_workflow(
-        self, distrobox, test_container_name, distro_image
-    ):
+    def test_multi_distro_workflow(self, distrobox, test_container_name, distro_image):
         """Test creating and using containers with different distributions."""
         distro_name, image = distro_image
         name = f"{test_container_name}-{distro_name}"
@@ -156,9 +152,7 @@ class TestRecreateWorkflow:
 class TestStopAndRestart:
     """Stop and restart workflow tests."""
 
-    def test_stop_and_restart(
-        self, distrobox, test_container_name, container_cleanup
-    ):
+    def test_stop_and_restart(self, distrobox, test_container_name, container_cleanup):
         """Test stopping and restarting a container."""
         name = test_container_name
         container_cleanup.append(name)

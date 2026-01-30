@@ -14,20 +14,21 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.request import urlopen
 from urllib.error import URLError
+from urllib.request import urlopen
 
 from ..config import (
-    VERSION,
-    Config,
     DEFAULT_IMAGE,
     DEFAULT_NAME,
+    VERSION,
+    Config,
     check_sudo_doas,
     get_user_info,
 )
 from ..container import USERNS_SIZE, detect_container_manager
-from ..utils.console import print_error, green, red
+from ..utils.console import green, print_error, red
 from ..utils.helpers import (
+    InvalidInputError,
     derive_container_name,
     file_exists,
     find_ro_mountpoints,
@@ -35,7 +36,6 @@ from ..utils.helpers import (
     get_hostname,
     get_real_path,
     get_script_path,
-    InvalidInputError,
     is_symlink,
     mkdir_p,
     prompt_yes_no,
@@ -186,7 +186,7 @@ def create_parser() -> argparse.ArgumentParser:
     # Get current hostname for default display
     current_hostname = get_hostname()
 
-    epilog = f"""\
+    epilog = """\
 Examples:
     distrobox create --image alpine:latest --name test --init-hooks "touch /var/tmp/test1"
     distrobox create --image fedora:39 --name test --additional-flags "--env MY_VAR=value"
@@ -479,10 +479,14 @@ def _add_distrobox_volumes(
     hostexec_path = get_script_path("distrobox-host-exec")
 
     if not entrypoint_path:
-        print_error("[error]Error: distrobox-plus installation incomplete, missing distrobox-init[/error]")
+        print_error(
+            "[error]Error: distrobox-plus installation incomplete, missing distrobox-init[/error]"
+        )
         sys.exit(127)
     if not export_path:
-        print_error("[error]Error: distrobox-plus installation incomplete, missing distrobox-export[/error]")
+        print_error(
+            "[error]Error: distrobox-plus installation incomplete, missing distrobox-export[/error]"
+        )
         sys.exit(127)
 
     cmd.append("--volume=/tmp:/tmp:rslave")
@@ -749,7 +753,7 @@ def _apply_cli_overrides(config: Config, parsed: argparse.Namespace) -> None:
 def _resolve_image(parsed: argparse.Namespace, config: Config, clone: str) -> str:
     """Resolve the container image from parsed args and config."""
     if parsed.image:
-        return parsed.image
+        return str(parsed.image)
     if config.container_image:
         return config.container_image
     if not clone:
@@ -760,9 +764,9 @@ def _resolve_image(parsed: argparse.Namespace, config: Config, clone: str) -> st
 def _resolve_name(parsed: argparse.Namespace, config: Config, image: str) -> str:
     """Resolve the container name from parsed args and config."""
     if parsed.name:
-        return parsed.name
+        return str(parsed.name)
     if parsed.name_positional:
-        return parsed.name_positional
+        return str(parsed.name_positional)
     if config.container_name:
         return config.container_name
     if image == DEFAULT_IMAGE:
@@ -873,7 +877,9 @@ def _handle_clone(
         Clone image name if successful, None if failed
     """
     if not manager.is_podman and not manager.is_docker:
-        print_error("[error]ERROR: clone is only supported with docker and podman[/error]")
+        print_error(
+            "[error]ERROR: clone is only supported with docker and podman[/error]"
+        )
         return None
     return get_clone_image(manager, opts.clone)
 
@@ -946,7 +952,9 @@ def _execute_create(
             try:
                 generate_entry_run([opts.name])
             except Exception as e:
-                print_error(f"[warning]Warning: Failed to generate desktop entry: {e}[/warning]")
+                print_error(
+                    f"[warning]Warning: Failed to generate desktop entry: {e}[/warning]"
+                )
 
         return 0
     else:

@@ -11,10 +11,10 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 from ..config import VERSION, get_user_info
-
 
 # Base dependencies required by the original script
 BASE_DEPENDENCIES = ("basename", "find", "grep", "sed")
@@ -149,7 +149,7 @@ def _filter_enter_flags(enter_flags: str) -> str:
     filtered: list[str] = []
     skip_next = False
 
-    for i, part in enumerate(parts):
+    for _i, part in enumerate(parts):
         if skip_next:
             skip_next = False
             continue
@@ -217,7 +217,7 @@ def _build_container_command_suffix(
     Matches original shell script behavior.
     """
     if sudo_prefix in ("doas", "su-exec root"):
-        return f'sh -l -c "\'{exported_bin}\' {extra_flags} $@"'
+        return f"sh -l -c \"'{exported_bin}' {extra_flags} $@\""
     return f"'{exported_bin}' {extra_flags} \"$@\""
 
 
@@ -268,12 +268,14 @@ Usage:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "-a", "--app",
+        "-a",
+        "--app",
         dest="exported_app",
         help="name of the application to export or absolute path to desktopfile to export",
     )
     parser.add_argument(
-        "-b", "--bin",
+        "-b",
+        "--bin",
         dest="exported_bin",
         help="absolute path of the binary to export",
     )
@@ -288,43 +290,51 @@ Usage:
         help="list binaries exported from this container, use -ep to specify custom paths to search",
     )
     parser.add_argument(
-        "-d", "--delete",
+        "-d",
+        "--delete",
         action="store_true",
         dest="exported_delete",
         help="delete exported application or binary",
     )
     parser.add_argument(
-        "-el", "--export-label",
+        "-el",
+        "--export-label",
         dest="exported_app_label",
         help='label to add to exported application name. Use "none" to disable. '
         "Defaults to (on $container_name)",
     )
     parser.add_argument(
-        "-ep", "--export-path",
+        "-ep",
+        "--export-path",
         dest="dest_path",
         help="path where to export the binary",
     )
     parser.add_argument(
-        "-ef", "--extra-flags",
+        "-ef",
+        "--extra-flags",
         help="extra flags to add to the command",
     )
     parser.add_argument(
-        "-nf", "--enter-flags",
+        "-nf",
+        "--enter-flags",
         help="flags to add to distrobox-enter",
     )
     parser.add_argument(
-        "-S", "--sudo",
+        "-S",
+        "--sudo",
         action="store_true",
         dest="is_sudo",
         help="specify if the exported item should be run as sudo",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="show more verbosity",
     )
     parser.add_argument(
-        "-V", "--version",
+        "-V",
+        "--version",
         action="version",
         version=f"distrobox: {VERSION}",
     )
@@ -454,7 +464,7 @@ def _export_binary(
         return 3
 
 
-def _iter_files_recursive(directory: Path):
+def _iter_files_recursive(directory: Path) -> Iterator[Path]:
     """Recursively iterate over files and symlinks in a directory.
 
     Matches original: find ... -type f -print -o -type l -print
@@ -504,7 +514,9 @@ def _find_desktop_files(exported_app: str, canon_dirs: list[str]) -> list[str]:
     name_pattern = re.compile(f"Name=.*{re.escape(exported_app)}.*")
     # Pattern to exclude already exported apps (grep -L)
     # Original uses: Exec=.*${DISTROBOX_ENTER_PATH:-"distrobox.*enter"}.*
-    exclude_pattern = re.compile(f"Exec=.*({distrobox_enter_pattern}|distrobox.*enter).*")
+    exclude_pattern = re.compile(
+        f"Exec=.*({distrobox_enter_pattern}|distrobox.*enter).*"
+    )
 
     for canon_dir in canon_dirs:
         if not Path(canon_dir).is_dir():
@@ -659,14 +671,18 @@ def _export_application(
         icon_home_directory = (
             os.path.dirname(icon_file)
             .replace("/usr/share/", f"/run/host/{host_home}/.local/share/")
-            .replace("/var/lib/flatpak/exports/share", f"/run/host/{host_home}/.local/share/")
+            .replace(
+                "/var/lib/flatpak/exports/share", f"/run/host/{host_home}/.local/share/"
+            )
             .replace("pixmaps", "icons")
         )
 
         # Check if we're exporting an icon which is not in a canonical path
         if icon_home_directory == os.path.dirname(icon_file):
             icon_home_directory = f"{host_home}/.local/share/icons/"
-            icon_file_absolute_path = f"{icon_home_directory}{os.path.basename(icon_file)}"
+            icon_file_absolute_path = (
+                f"{icon_home_directory}{os.path.basename(icon_file)}"
+            )
 
         # Check if we're exporting or deleting
         if exported_delete:
@@ -727,7 +743,9 @@ def _export_application(
 
             # Remove TryExec and DBusActivatable
             content = re.sub(r"^TryExec=.*\n?", "", content, flags=re.MULTILINE)
-            content = re.sub(r"^DBusActivatable=true\n?", "", content, flags=re.MULTILINE)
+            content = re.sub(
+                r"^DBusActivatable=true\n?", "", content, flags=re.MULTILINE
+            )
 
             # Add label to Name
             content = re.sub(
@@ -783,7 +801,9 @@ def _export_application(
 
     if exported_delete:
         print(f"Application {exported_app} successfully un-exported.\nOK!")
-        print(f"{exported_app} will disappear from your applications list in a few seconds.")
+        print(
+            f"{exported_app} will disappear from your applications list in a few seconds."
+        )
     else:
         print(f"Application {exported_app} successfully exported.\nOK!")
         print(f"{exported_app} will appear in your applications list in a few seconds.")
@@ -883,8 +903,7 @@ def _list_exported_binaries(dest_path: str, container_id: str) -> int:
 
             # Check if it's from this container (grep "^# name:.*" | grep -q "${CONTAINER_ID}")
             name_match = any(
-                line.startswith("# name:") and container_id in line
-                for line in lines
+                line.startswith("# name:") and container_id in line for line in lines
             )
             if not name_match:
                 continue
@@ -976,14 +995,18 @@ def run(args: list[str] | None = None) -> int:
         export_action = "list-binaries"
 
     # Ensure we're not receiving more than one action at time
-    actions_count = sum([
-        bool(parsed.exported_app),
-        bool(parsed.exported_bin),
-        parsed.list_apps,
-        parsed.list_binaries,
-    ])
+    actions_count = sum(
+        [
+            bool(parsed.exported_app),
+            bool(parsed.exported_bin),
+            parsed.list_apps,
+            parsed.list_binaries,
+        ]
+    )
     if actions_count > 1:
-        print("Error: Invalid arguments, choose only one action below.", file=sys.stderr)
+        print(
+            "Error: Invalid arguments, choose only one action below.", file=sys.stderr
+        )
         print("Error: You can only export one thing at time.", file=sys.stderr)
         return 2
 
