@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from distrobox_plus.utils.templates import (
     DISTROBOX_PACKAGES,
     generate_additional_packages_cmd,
@@ -43,7 +41,9 @@ class TestDistroboxPackages:
         """Test that all values are lists of strings."""
         for manager, packages in DISTROBOX_PACKAGES.items():
             assert isinstance(packages, list), f"{manager} is not a list"
-            assert all(isinstance(p, str) for p in packages), f"{manager} has non-string"
+            assert all(isinstance(p, str) for p in packages), (
+                f"{manager} has non-string"
+            )
 
     def test_no_empty_package_lists(self):
         """Test that no package list is empty."""

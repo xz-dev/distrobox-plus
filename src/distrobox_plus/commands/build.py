@@ -148,7 +148,9 @@ def run(args: list[str] | None = None) -> int:
         )
         print("# Generated Containerfile:")
         print(containerfile)
-        tag = get_boost_image_tag(image, additional_packages, init_hooks, pre_init_hooks)
+        tag = get_boost_image_tag(
+            image, additional_packages, init_hooks, pre_init_hooks
+        )
         print(f"# Would be tagged as: {tag}")
         return 0
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from distrobox_plus.utils.builder import (
     generate_containerfile,
     get_boost_image_name,

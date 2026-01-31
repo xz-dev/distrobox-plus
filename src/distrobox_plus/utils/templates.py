@@ -327,7 +327,9 @@ def generate_install_cmd() -> str:
     apk_checks = []
     for pkg in apk_packages:
         # For apk, we check if the package is installed, not just the command
-        apk_checks.append(f"apk info -e {pkg} > /dev/null 2>&1 || apk add --no-cache {pkg} || true")
+        apk_checks.append(
+            f"apk info -e {pkg} > /dev/null 2>&1 || apk add --no-cache {pkg} || true"
+        )
 
     lines.append(
         f"if command -v apk > /dev/null 2>&1; then "
@@ -340,7 +342,9 @@ def generate_install_cmd() -> str:
     apt_packages = DISTROBOX_PACKAGES["apt"]
     apt_checks = []
     for pkg in apt_packages:
-        apt_checks.append(f"dpkg -s {pkg} > /dev/null 2>&1 || apt-get install -y {pkg} || true")
+        apt_checks.append(
+            f"dpkg -s {pkg} > /dev/null 2>&1 || apt-get install -y {pkg} || true"
+        )
 
     lines.append(
         f"if command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then "
@@ -354,7 +358,9 @@ def generate_install_cmd() -> str:
     dnf_packages = DISTROBOX_PACKAGES["dnf"]
     dnf_checks = []
     for pkg in dnf_packages:
-        dnf_checks.append(f"rpm -q {pkg} > /dev/null 2>&1 || dnf install -y {pkg} || yum install -y {pkg} || true")
+        dnf_checks.append(
+            f"rpm -q {pkg} > /dev/null 2>&1 || dnf install -y {pkg} || yum install -y {pkg} || true"
+        )
 
     lines.append(
         f"if command -v dnf > /dev/null 2>&1 || command -v yum > /dev/null 2>&1; then "
@@ -366,7 +372,9 @@ def generate_install_cmd() -> str:
     pacman_packages = DISTROBOX_PACKAGES["pacman"]
     pacman_checks = []
     for pkg in pacman_packages:
-        pacman_checks.append(f"pacman -Qi {pkg} > /dev/null 2>&1 || pacman -S --noconfirm --needed {pkg} || true")
+        pacman_checks.append(
+            f"pacman -Qi {pkg} > /dev/null 2>&1 || pacman -S --noconfirm --needed {pkg} || true"
+        )
 
     lines.append(
         f"if command -v pacman > /dev/null 2>&1; then "
@@ -379,7 +387,9 @@ def generate_install_cmd() -> str:
     zypper_packages = DISTROBOX_PACKAGES["zypper"]
     zypper_checks = []
     for pkg in zypper_packages:
-        zypper_checks.append(f"rpm -q {pkg} > /dev/null 2>&1 || zypper install -y {pkg} || true")
+        zypper_checks.append(
+            f"rpm -q {pkg} > /dev/null 2>&1 || zypper install -y {pkg} || true"
+        )
 
     lines.append(
         f"if command -v zypper > /dev/null 2>&1; then "
@@ -410,7 +420,9 @@ def generate_install_cmd() -> str:
     xbps_packages = DISTROBOX_PACKAGES["xbps"]
     xbps_checks = []
     for pkg in xbps_packages:
-        xbps_checks.append(f"xbps-query {pkg} > /dev/null 2>&1 || xbps-install -y {pkg} || true")
+        xbps_checks.append(
+            f"xbps-query {pkg} > /dev/null 2>&1 || xbps-install -y {pkg} || true"
+        )
 
     lines.append(
         f"if command -v xbps-install > /dev/null 2>&1; then "
@@ -436,60 +448,60 @@ def generate_install_cmd_full() -> str:
     # APK
     apk_pkgs = " ".join(DISTROBOX_PACKAGES["apk"])
     sections.append(
-        f'if command -v apk > /dev/null 2>&1; then '
-        f'apk update && apk add --no-cache {apk_pkgs} || true; '
-        f'fi'
+        f"if command -v apk > /dev/null 2>&1; then "
+        f"apk update && apk add --no-cache {apk_pkgs} || true; "
+        f"fi"
     )
 
     # APT (excluding rpm-based apt systems)
     apt_pkgs = " ".join(DISTROBOX_PACKAGES["apt"])
     sections.append(
-        f'if command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then '
-        f'export DEBIAN_FRONTEND=noninteractive && '
-        f'apt-get update && apt-get install -y {apt_pkgs} || true; '
-        f'fi'
+        f"if command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then "
+        f"export DEBIAN_FRONTEND=noninteractive && "
+        f"apt-get update && apt-get install -y {apt_pkgs} || true; "
+        f"fi"
     )
 
     # DNF/YUM
     dnf_pkgs = " ".join(DISTROBOX_PACKAGES["dnf"])
     sections.append(
-        f'if command -v dnf > /dev/null 2>&1; then '
-        f'dnf install -y {dnf_pkgs} || true; '
-        f'elif command -v yum > /dev/null 2>&1; then '
-        f'yum install -y {dnf_pkgs} || true; '
-        f'fi'
+        f"if command -v dnf > /dev/null 2>&1; then "
+        f"dnf install -y {dnf_pkgs} || true; "
+        f"elif command -v yum > /dev/null 2>&1; then "
+        f"yum install -y {dnf_pkgs} || true; "
+        f"fi"
     )
 
     # Pacman
     pacman_pkgs = " ".join(DISTROBOX_PACKAGES["pacman"])
     sections.append(
-        f'if command -v pacman > /dev/null 2>&1; then '
-        f'pacman -Syu --noconfirm && pacman -S --noconfirm --needed {pacman_pkgs} || true; '
-        f'fi'
+        f"if command -v pacman > /dev/null 2>&1; then "
+        f"pacman -Syu --noconfirm && pacman -S --noconfirm --needed {pacman_pkgs} || true; "
+        f"fi"
     )
 
     # Zypper
     zypper_pkgs = " ".join(DISTROBOX_PACKAGES["zypper"])
     sections.append(
-        f'if command -v zypper > /dev/null 2>&1; then '
-        f'zypper refresh && zypper install -y {zypper_pkgs} || true; '
-        f'fi'
+        f"if command -v zypper > /dev/null 2>&1; then "
+        f"zypper refresh && zypper install -y {zypper_pkgs} || true; "
+        f"fi"
     )
 
     # Emerge
     emerge_pkgs = " ".join(DISTROBOX_PACKAGES["emerge"])
     sections.append(
-        f'if command -v emerge > /dev/null 2>&1; then '
-        f'emerge --ask=n --noreplace --quiet-build {emerge_pkgs} || true; '
-        f'fi'
+        f"if command -v emerge > /dev/null 2>&1; then "
+        f"emerge --ask=n --noreplace --quiet-build {emerge_pkgs} || true; "
+        f"fi"
     )
 
     # XBPS
     xbps_pkgs = " ".join(DISTROBOX_PACKAGES["xbps"])
     sections.append(
-        f'if command -v xbps-install > /dev/null 2>&1; then '
-        f'xbps-install -Syu xbps && xbps-install -y {xbps_pkgs} || true; '
-        f'fi'
+        f"if command -v xbps-install > /dev/null 2>&1; then "
+        f"xbps-install -Syu xbps && xbps-install -y {xbps_pkgs} || true; "
+        f"fi"
     )
 
     return "set -e && " + " && ".join(sections)

@@ -218,7 +218,9 @@ def ensure_boost_image(
     Returns:
         Image tag if successful, None on failure
     """
-    tag = get_boost_image_tag(base_image, additional_packages, init_hooks, pre_init_hooks)
+    tag = get_boost_image_tag(
+        base_image, additional_packages, init_hooks, pre_init_hooks
+    )
 
     # Check if image already exists
     if not force and image_exists(manager, tag):

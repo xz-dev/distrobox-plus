@@ -51,7 +51,6 @@ def _main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("create", help="Create a new container")
     subparsers.add_parser("enter", help="Enter a container")
     subparsers.add_parser("ephemeral", help="Create a temporary container")
-    subparsers.add_parser("export", help="Export apps/services from container to host")
     subparsers.add_parser("generate-entry", help="Generate desktop entry for container")
     subparsers.add_parser("list", aliases=["ls"], help="List containers")
     subparsers.add_parser("rm", help="Remove containers")
@@ -104,11 +103,6 @@ def _main(argv: list[str] | None = None) -> int:
 
         case "ephemeral":
             from .commands.ephemeral import run
-
-            return run(args)
-
-        case "export":
-            from .commands.export import run
 
             return run(args)
 

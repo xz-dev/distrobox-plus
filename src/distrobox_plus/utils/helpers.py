@@ -103,7 +103,7 @@ def get_script_path(script_name: str) -> Path | None:
     """
     # First check bundled scripts in the package
     try:
-        from .. import scripts
+        from .. import scripts  # type: ignore[attr-defined]
 
         files = importlib.resources.files(scripts)
         script_file = files.joinpath(script_name)

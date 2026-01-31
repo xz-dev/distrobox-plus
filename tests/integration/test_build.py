@@ -143,8 +143,12 @@ class TestBuildDryRun:
         assert_command_success(result2)
 
         # Extract tags
-        tag1 = [line for line in result1.output.split("\n") if "Would be tagged" in line][0]
-        tag2 = [line for line in result2.output.split("\n") if "Would be tagged" in line][0]
+        tag1 = [
+            line for line in result1.output.split("\n") if "Would be tagged" in line
+        ][0]
+        tag2 = [
+            line for line in result2.output.split("\n") if "Would be tagged" in line
+        ][0]
         assert tag1 != tag2
 
 
@@ -224,7 +228,8 @@ class TestBuildActual:
             if "-boost:" in line:
                 # Extract tag
                 import re
-                match = re.search(r'(\S+-boost:\S+)', line)
+
+                match = re.search(r"(\S+-boost:\S+)", line)
                 if match:
                     tag = match.group(1)
                     subprocess.run([container_manager, "rmi", tag], capture_output=True)
@@ -247,7 +252,8 @@ class TestBuildActual:
         for line in result.output.split("\n"):
             if "-boost:" in line:
                 import re
-                match = re.search(r'(\S+-boost:\S+)', line)
+
+                match = re.search(r"(\S+-boost:\S+)", line)
                 if match:
                     tag = match.group(1)
                     subprocess.run([container_manager, "rmi", tag], capture_output=True)
@@ -280,7 +286,8 @@ class TestBuildActual:
         for line in result1.output.split("\n"):
             if "-boost:" in line:
                 import re
-                match = re.search(r'(\S+-boost:\S+)', line)
+
+                match = re.search(r"(\S+-boost:\S+)", line)
                 if match:
                     tag = match.group(1)
                     subprocess.run([container_manager, "rmi", tag], capture_output=True)
@@ -312,7 +319,8 @@ class TestBuildActual:
         for line in result1.output.split("\n"):
             if "-boost:" in line:
                 import re
-                match = re.search(r'(\S+-boost:\S+)', line)
+
+                match = re.search(r"(\S+-boost:\S+)", line)
                 if match:
                     tag = match.group(1)
                     subprocess.run([container_manager, "rmi", tag], capture_output=True)
