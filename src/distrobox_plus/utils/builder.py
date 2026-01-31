@@ -69,7 +69,16 @@ def generate_containerfile(
     init_hooks: str = "",
     pre_init_hooks: str = "",
 ) -> str:
-    """Generate Containerfile content for a boosted image.
+    """Generate multi-stage Containerfile content for a boosted image.
+
+    Creates a multi-stage build with conditional stages:
+    - Stage 1: init - Always present, installs base dependencies
+    - Stage 2: pre-hooks - Only if pre_init_hooks provided
+    - Stage 3: packages - Only if additional_packages provided
+    - Stage 4: runner - Only if init_hooks provided
+
+    Each stage inherits from the previous existing stage, enabling
+    efficient layer caching by Docker/Podman.
 
     Args:
         base_image: Base image to build from
@@ -80,63 +89,60 @@ def generate_containerfile(
     Returns:
         Containerfile content as string
     """
-    lines = [
-        f"FROM {base_image}",
-        "",
-        "# Marker for boosted image - distrobox-init will skip package setup",
-        "RUN touch /.distrobox-boost",
-        "",
-    ]
+    lines: list[str] = []
+    current_stage = "init"
 
-    # Add upgrade command
-    upgrade_cmd = generate_upgrade_cmd()
+    # Stage 1: init (always present)
     lines.extend(
         [
+            f"FROM {base_image} AS init",
+            "",
+            "# Marker for boosted image - distrobox-init will skip package setup",
+            "RUN touch /.distrobox-boost",
+            "",
             "# Upgrade existing packages",
-            f"RUN {upgrade_cmd}",
+            f"RUN {generate_upgrade_cmd()}",
             "",
-        ]
-    )
-
-    # Add pre-init hooks if specified
-    if pre_init_hooks:
-        hooks_cmd = generate_hooks_cmd(pre_init_hooks)
-        lines.extend(
-            [
-                "# Pre-init hooks",
-                f"RUN {hooks_cmd}",
-                "",
-            ]
-        )
-
-    # Add distrobox package installation
-    install_cmd = generate_install_cmd()
-    lines.extend(
-        [
             "# Install distrobox dependencies (conditional per-package check)",
-            f"RUN {install_cmd}",
+            f"RUN {generate_install_cmd()}",
             "",
         ]
     )
 
-    # Add additional packages if specified
-    if additional_packages:
-        additional_cmd = generate_additional_packages_cmd(additional_packages)
+    # Stage 2: pre-hooks (conditional)
+    if pre_init_hooks:
         lines.extend(
             [
-                "# Install additional packages",
-                f"RUN {additional_cmd}",
+                f"FROM {current_stage} AS pre-hooks",
+                "",
+                "# Pre-init hooks",
+                f"RUN {generate_hooks_cmd(pre_init_hooks)}",
                 "",
             ]
         )
+        current_stage = "pre-hooks"
 
-    # Add init hooks if specified
-    if init_hooks:
-        hooks_cmd = generate_hooks_cmd(init_hooks)
+    # Stage 3: packages (conditional)
+    if additional_packages:
         lines.extend(
             [
+                f"FROM {current_stage} AS packages",
+                "",
+                "# Install additional packages",
+                f"RUN {generate_additional_packages_cmd(additional_packages)}",
+                "",
+            ]
+        )
+        current_stage = "packages"
+
+    # Stage 4: runner (conditional)
+    if init_hooks:
+        lines.extend(
+            [
+                f"FROM {current_stage} AS runner",
+                "",
                 "# Init hooks",
-                f"RUN {hooks_cmd}",
+                f"RUN {generate_hooks_cmd(init_hooks)}",
                 "",
             ]
         )
