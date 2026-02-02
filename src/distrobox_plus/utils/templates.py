@@ -1,13 +1,71 @@
 """Template generation utilities for Containerfile creation.
 
-Generates package installation commands with conditional checks to
-optimize builds for source-based distros like Gentoo.
+Generates package installation commands using Jinja2 templating.
 """
 
 from __future__ import annotations
 
+from jinja2 import BaseLoader, Environment
+
+# Jinja2 environment (singleton)
+_env = Environment(loader=BaseLoader(), trim_blocks=True, lstrip_blocks=True)
+
+# Package manager configuration
+_PM_CONFIG: dict[str, dict[str, str]] = {
+    "apk": {
+        "detect": "apk",
+        "check": "apk info -e {pkg} > /dev/null 2>&1",
+        "install": "apk add --no-cache",
+        "update": "apk update",
+        "upgrade": "apk update && apk upgrade",
+    },
+    "apt": {
+        "detect": "apt-get",
+        "exclude": "rpm",
+        "check": "dpkg -s {pkg} > /dev/null 2>&1",
+        "install": "apt-get install -y",
+        "update": "export DEBIAN_FRONTEND=noninteractive && apt-get update",
+        "upgrade": "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y",
+    },
+    "dnf": {
+        "detect": "dnf",
+        "fallback": "yum",
+        "check": "rpm -q {pkg} > /dev/null 2>&1",
+        "install": "dnf install -y",
+        "install_fallback": "yum install -y",
+        "upgrade": "dnf upgrade -y",
+    },
+    "pacman": {
+        "detect": "pacman",
+        "check": "pacman -Qi {pkg} > /dev/null 2>&1",
+        "install": "pacman -S --noconfirm --needed",
+        "update": "pacman -Sy",
+        "upgrade": "pacman -Syu --noconfirm",
+    },
+    "zypper": {
+        "detect": "zypper",
+        "check": "rpm -q {pkg} > /dev/null 2>&1",
+        "install": "zypper install -y",
+        "update": "zypper refresh",
+        "upgrade": "zypper dup -y",
+    },
+    "emerge": {
+        "detect": "emerge",
+        "check": "command -v {pkg_name} > /dev/null 2>&1",
+        "install": "emerge --ask=n --noreplace --quiet-build",
+        "install_user": "emerge --ask=n --noreplace",  # For user packages (no --quiet-build)
+        "upgrade": "emerge --sync",
+    },
+    "xbps": {
+        "detect": "xbps-install",
+        "check": "xbps-query {pkg} > /dev/null 2>&1",
+        "install": "xbps-install -y",
+        "update": "xbps-install -Syu xbps",
+        "upgrade": "xbps-install -Syu",
+    },
+}
+
 # Core packages needed by distrobox for each package manager
-# These are the minimal essential packages that distrobox-init installs
 DISTROBOX_PACKAGES: dict[str, list[str]] = {
     "apk": [
         "bash",
@@ -296,281 +354,75 @@ DISTROBOX_PACKAGES: dict[str, list[str]] = {
     ],
 }
 
+# Pre-compiled Jinja2 templates
+_INSTALL_TEMPLATE = _env.from_string("""\
+set -e
+{%- for pm, cfg in configs.items() %}
+ && if command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command -v {{ cfg.exclude }} > /dev/null 2>&1{% endif %}{% if cfg.fallback %} || command -v {{ cfg.fallback }} > /dev/null 2>&1{% endif %}; then \
+{% if cfg.update %}{{ cfg.update }} && {% endif %}\
+{%- for pkg in packages[pm][:limits.get(pm, 10)] %}
+{{ cfg.check.format(pkg=pkg, pkg_name=pkg.split('/')[-1]) }} || {{ cfg.install }} {{ pkg }}{% if cfg.install_fallback %} || {{ cfg.install_fallback }} {{ pkg }}{% endif %} || true{% if not loop.last %} && {% endif %}\
+{%- endfor %}; fi\
+{%- endfor %}""")
+
+_INSTALL_FULL_TEMPLATE = _env.from_string("""\
+set -e\
+{%- for pm, cfg in configs.items() %} && \
+if command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command -v {{ cfg.exclude }} > /dev/null 2>&1{% endif %}; then \
+{% if cfg.update %}{{ cfg.update }} && {% endif %}{{ cfg.install }} {{ packages[pm] | join(' ') }} || true; \
+{%- if cfg.fallback %}elif command -v {{ cfg.fallback }} > /dev/null 2>&1; then {{ cfg.install_fallback }} {{ packages[pm] | join(' ') }} || true; {% endif %}\
+fi\
+{%- endfor %}""")
+
+_UPGRADE_TEMPLATE = _env.from_string("""\
+set -e && \
+{%- for pm, cfg in configs.items() %}\
+{% if not loop.first %}elif {% else %}if {% endif %}\
+command -v {{ cfg.detect }} > /dev/null 2>&1; then {{ cfg.upgrade }} || true\
+{%- endfor %}; fi""")
+
+_ADDITIONAL_PKG_TEMPLATE = _env.from_string("""\
+set -e && \
+{%- for pm, cfg in configs.items() %}\
+{% if not loop.first %}elif {% else %}if {% endif %}\
+command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command -v {{ cfg.exclude }} > /dev/null 2>&1{% endif %}; then \
+{% if 'update' in cfg and pm == 'apt' %}{{ cfg.update }} && {% endif %}{{ cfg.install_user if cfg.install_user else cfg.install }} {{ pkg_list }}\
+{%- endfor %}; fi""")
+
 
 def _escape_shell(s: str) -> str:
-    """Escape string for shell use in Containerfile.
-
-    Args:
-        s: String to escape
-
-    Returns:
-        Shell-safe string
-    """
-    # For RUN commands, we escape single quotes
+    """Escape string for shell use in Containerfile."""
     return s.replace("'", "'\"'\"'")
 
 
 def generate_install_cmd() -> str:
-    """Generate install command with conditional package checks.
-
-    Uses `command -v pkg || install pkg` pattern to skip packages
-    that are already installed. This is critical for source-based
-    distros like Gentoo to avoid recompilation.
-
-    Returns:
-        Shell command string for Containerfile RUN
-    """
-    lines = ["set -e"]
-
-    # APK (Alpine, Wolfi, Chimera)
-    apk_packages = DISTROBOX_PACKAGES["apk"]
-    apk_checks = []
-    for pkg in apk_packages:
-        # For apk, we check if the package is installed, not just the command
-        apk_checks.append(
-            f"apk info -e {pkg} > /dev/null 2>&1 || apk add --no-cache {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v apk > /dev/null 2>&1; then "
-        f"apk update && "
-        f"{' && '.join(apk_checks[:10])}; "  # Limit for readability in generated file
-        f"fi"
+    """Generate install command with conditional package checks (limited packages)."""
+    return _INSTALL_TEMPLATE.render(
+        configs=_PM_CONFIG, packages=DISTROBOX_PACKAGES, limits={"emerge": 8}
     )
-
-    # APT (Debian, Ubuntu)
-    apt_packages = DISTROBOX_PACKAGES["apt"]
-    apt_checks = []
-    for pkg in apt_packages:
-        apt_checks.append(
-            f"dpkg -s {pkg} > /dev/null 2>&1 || apt-get install -y {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then "
-        f"export DEBIAN_FRONTEND=noninteractive && "
-        f"apt-get update && "
-        f"{' && '.join(apt_checks[:10])}; "
-        f"fi"
-    )
-
-    # DNF/YUM (Fedora, RHEL, CentOS)
-    dnf_packages = DISTROBOX_PACKAGES["dnf"]
-    dnf_checks = []
-    for pkg in dnf_packages:
-        dnf_checks.append(
-            f"rpm -q {pkg} > /dev/null 2>&1 || dnf install -y {pkg} || yum install -y {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v dnf > /dev/null 2>&1 || command -v yum > /dev/null 2>&1; then "
-        f"{' && '.join(dnf_checks[:10])}; "
-        f"fi"
-    )
-
-    # Pacman (Arch Linux)
-    pacman_packages = DISTROBOX_PACKAGES["pacman"]
-    pacman_checks = []
-    for pkg in pacman_packages:
-        pacman_checks.append(
-            f"pacman -Qi {pkg} > /dev/null 2>&1 || pacman -S --noconfirm --needed {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v pacman > /dev/null 2>&1; then "
-        f"pacman -Sy && "
-        f"{' && '.join(pacman_checks[:10])}; "
-        f"fi"
-    )
-
-    # Zypper (openSUSE)
-    zypper_packages = DISTROBOX_PACKAGES["zypper"]
-    zypper_checks = []
-    for pkg in zypper_packages:
-        zypper_checks.append(
-            f"rpm -q {pkg} > /dev/null 2>&1 || zypper install -y {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v zypper > /dev/null 2>&1; then "
-        f"zypper refresh && "
-        f"{' && '.join(zypper_checks[:10])}; "
-        f"fi"
-    )
-
-    # Emerge (Gentoo) - Most important for conditional checks due to compile time
-    emerge_packages = DISTROBOX_PACKAGES["emerge"]
-    emerge_checks = []
-    for pkg in emerge_packages:
-        # For emerge, --noreplace already skips installed packages
-        # but we add explicit check for clarity and to avoid even invoking emerge
-        pkg_name = pkg.split("/")[-1] if "/" in pkg else pkg
-        emerge_checks.append(
-            f"command -v {pkg_name} > /dev/null 2>&1 || "
-            f"emerge --ask=n --noreplace --quiet-build {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v emerge > /dev/null 2>&1; then "
-        f"{' && '.join(emerge_checks[:8])}; "
-        f"fi"
-    )
-
-    # XBPS (Void Linux)
-    xbps_packages = DISTROBOX_PACKAGES["xbps"]
-    xbps_checks = []
-    for pkg in xbps_packages:
-        xbps_checks.append(
-            f"xbps-query {pkg} > /dev/null 2>&1 || xbps-install -y {pkg} || true"
-        )
-
-    lines.append(
-        f"if command -v xbps-install > /dev/null 2>&1; then "
-        f"xbps-install -Syu xbps && "
-        f"{' && '.join(xbps_checks[:10])}; "
-        f"fi"
-    )
-
-    return " && ".join(lines)
 
 
 def generate_install_cmd_full() -> str:
-    """Generate comprehensive install command for all package managers.
-
-    This version includes all packages (not limited for readability).
-    Used internally for complete builds.
-
-    Returns:
-        Shell command string for Containerfile RUN
-    """
-    sections = []
-
-    # APK
-    apk_pkgs = " ".join(DISTROBOX_PACKAGES["apk"])
-    sections.append(
-        f"if command -v apk > /dev/null 2>&1; then "
-        f"apk update && apk add --no-cache {apk_pkgs} || true; "
-        f"fi"
+    """Generate comprehensive install command for all package managers."""
+    return _INSTALL_FULL_TEMPLATE.render(
+        configs=_PM_CONFIG, packages=DISTROBOX_PACKAGES
     )
-
-    # APT (excluding rpm-based apt systems)
-    apt_pkgs = " ".join(DISTROBOX_PACKAGES["apt"])
-    sections.append(
-        f"if command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then "
-        f"export DEBIAN_FRONTEND=noninteractive && "
-        f"apt-get update && apt-get install -y {apt_pkgs} || true; "
-        f"fi"
-    )
-
-    # DNF/YUM
-    dnf_pkgs = " ".join(DISTROBOX_PACKAGES["dnf"])
-    sections.append(
-        f"if command -v dnf > /dev/null 2>&1; then "
-        f"dnf install -y {dnf_pkgs} || true; "
-        f"elif command -v yum > /dev/null 2>&1; then "
-        f"yum install -y {dnf_pkgs} || true; "
-        f"fi"
-    )
-
-    # Pacman
-    pacman_pkgs = " ".join(DISTROBOX_PACKAGES["pacman"])
-    sections.append(
-        f"if command -v pacman > /dev/null 2>&1; then "
-        f"pacman -Syu --noconfirm && pacman -S --noconfirm --needed {pacman_pkgs} || true; "
-        f"fi"
-    )
-
-    # Zypper
-    zypper_pkgs = " ".join(DISTROBOX_PACKAGES["zypper"])
-    sections.append(
-        f"if command -v zypper > /dev/null 2>&1; then "
-        f"zypper refresh && zypper install -y {zypper_pkgs} || true; "
-        f"fi"
-    )
-
-    # Emerge
-    emerge_pkgs = " ".join(DISTROBOX_PACKAGES["emerge"])
-    sections.append(
-        f"if command -v emerge > /dev/null 2>&1; then "
-        f"emerge --ask=n --noreplace --quiet-build {emerge_pkgs} || true; "
-        f"fi"
-    )
-
-    # XBPS
-    xbps_pkgs = " ".join(DISTROBOX_PACKAGES["xbps"])
-    sections.append(
-        f"if command -v xbps-install > /dev/null 2>&1; then "
-        f"xbps-install -Syu xbps && xbps-install -y {xbps_pkgs} || true; "
-        f"fi"
-    )
-
-    return "set -e && " + " && ".join(sections)
 
 
 def generate_upgrade_cmd() -> str:
-    """Generate package manager upgrade command.
-
-    Returns:
-        Shell command string that upgrades packages based on detected manager
-    """
-    return (
-        "set -e && "
-        "if command -v apk > /dev/null 2>&1; then apk update && apk upgrade || true; "
-        "elif command -v apt-get > /dev/null 2>&1; then "
-        "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y || true; "
-        "elif command -v dnf > /dev/null 2>&1; then dnf upgrade -y || true; "
-        "elif command -v yum > /dev/null 2>&1; then yum upgrade -y || true; "
-        "elif command -v pacman > /dev/null 2>&1; then pacman -Syu --noconfirm || true; "
-        "elif command -v zypper > /dev/null 2>&1; then zypper dup -y || true; "
-        "elif command -v emerge > /dev/null 2>&1; then emerge --sync || true; "
-        "elif command -v xbps-install > /dev/null 2>&1; then xbps-install -Syu || true; "
-        "fi"
-    )
+    """Generate package manager upgrade command."""
+    return _UPGRADE_TEMPLATE.render(configs=_PM_CONFIG)
 
 
 def generate_hooks_cmd(hooks: str) -> str:
-    """Generate command to run hooks.
-
-    Chains hooks with && for set -e behavior.
-
-    Args:
-        hooks: Hook commands (may contain multiple commands)
-
-    Returns:
-        Shell command string
-    """
-    if not hooks:
-        return "true"
-
-    # Escape for shell and chain with &&
-    escaped = _escape_shell(hooks)
-    return f"set -e && {escaped}"
+    """Generate command to run hooks."""
+    return f"set -e && {_escape_shell(hooks)}" if hooks else "true"
 
 
 def generate_additional_packages_cmd(packages: str) -> str:
-    """Generate conditional install command for user-specified packages.
-
-    Args:
-        packages: Space-separated list of packages
-
-    Returns:
-        Shell command string
-    """
-    if not packages:
-        return "true"
-
-    pkg_list = packages.strip()
-
+    """Generate conditional install command for user-specified packages."""
     return (
-        "set -e && "
-        f"if command -v apk > /dev/null 2>&1; then apk add --no-cache {pkg_list}; "
-        f"elif command -v apt-get > /dev/null 2>&1 && ! command -v rpm > /dev/null 2>&1; then "
-        f"export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y {pkg_list}; "
-        f"elif command -v dnf > /dev/null 2>&1; then dnf install -y {pkg_list}; "
-        f"elif command -v yum > /dev/null 2>&1; then yum install -y {pkg_list}; "
-        f"elif command -v pacman > /dev/null 2>&1; then pacman -S --noconfirm --needed {pkg_list}; "
-        f"elif command -v zypper > /dev/null 2>&1; then zypper install -y {pkg_list}; "
-        f"elif command -v emerge > /dev/null 2>&1; then emerge --ask=n --noreplace {pkg_list}; "
-        f"elif command -v xbps-install > /dev/null 2>&1; then xbps-install -y {pkg_list}; "
-        "fi"
+        _ADDITIONAL_PKG_TEMPLATE.render(configs=_PM_CONFIG, pkg_list=packages.strip())
+        if packages
+        else "true"
     )
