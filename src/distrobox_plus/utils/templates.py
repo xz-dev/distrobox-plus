@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from jinja2 import BaseLoader, Environment
 
-# Jinja2 environment (singleton)
-_env = Environment(loader=BaseLoader(), trim_blocks=True, lstrip_blocks=True)
+# Shared Jinja2 environment (singleton) - can be imported by other modules
+jinja_env = Environment(loader=BaseLoader(), trim_blocks=True, lstrip_blocks=True)
 
 # Package manager configuration
 _PM_CONFIG: dict[str, dict[str, str]] = {
@@ -355,7 +355,7 @@ DISTROBOX_PACKAGES: dict[str, list[str]] = {
 }
 
 # Pre-compiled Jinja2 templates
-_INSTALL_TEMPLATE = _env.from_string("""\
+_INSTALL_TEMPLATE = jinja_env.from_string("""\
 set -e
 {%- for pm, cfg in configs.items() %}
  && if command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command -v {{ cfg.exclude }} > /dev/null 2>&1{% endif %}{% if cfg.fallback %} || command -v {{ cfg.fallback }} > /dev/null 2>&1{% endif %}; then \
@@ -365,7 +365,7 @@ set -e
 {%- endfor %}; fi\
 {%- endfor %}""")
 
-_INSTALL_FULL_TEMPLATE = _env.from_string("""\
+_INSTALL_FULL_TEMPLATE = jinja_env.from_string("""\
 set -e\
 {%- for pm, cfg in configs.items() %} && \
 if command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command -v {{ cfg.exclude }} > /dev/null 2>&1{% endif %}; then \
@@ -374,14 +374,14 @@ if command -v {{ cfg.detect }} > /dev/null 2>&1{% if cfg.exclude %} && ! command
 fi\
 {%- endfor %}""")
 
-_UPGRADE_TEMPLATE = _env.from_string("""\
+_UPGRADE_TEMPLATE = jinja_env.from_string("""\
 set -e && \
 {%- for pm, cfg in configs.items() %}\
 {% if not loop.first %}elif {% else %}if {% endif %}\
 command -v {{ cfg.detect }} > /dev/null 2>&1; then {{ cfg.upgrade }} || true\
 {%- endfor %}; fi""")
 
-_ADDITIONAL_PKG_TEMPLATE = _env.from_string("""\
+_ADDITIONAL_PKG_TEMPLATE = jinja_env.from_string("""\
 set -e && \
 {%- for pm, cfg in configs.items() %}\
 {% if not loop.first %}elif {% else %}if {% endif %}\

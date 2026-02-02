@@ -15,22 +15,37 @@ from .templates import (
     generate_hooks_cmd,
     generate_install_cmd,
     generate_upgrade_cmd,
+    jinja_env,
 )
 
 if TYPE_CHECKING:
     from ..container import ContainerManager
 
+# Containerfile template - stages are conditionally included
+_CONTAINERFILE_TEMPLATE = jinja_env.from_string("""\
+FROM {{ base_image }} AS init
+
+# Marker for boosted image - distrobox-init will skip package setup
+RUN touch /.distrobox-boost
+
+# Upgrade existing packages
+RUN {{ upgrade_cmd }}
+
+# Install distrobox dependencies (conditional per-package check)
+RUN {{ install_cmd }}
+
+{% for stage in stages %}
+FROM {{ stage.from }} AS {{ stage.name }}
+
+# {{ stage.comment }}
+RUN {{ stage.run }}
+
+{% endfor %}
+""")
+
 
 def get_boost_image_name(name: str) -> str:
-    """Get the name for a boosted image.
-
-    Args:
-        name: Base container name
-
-    Returns:
-        Image tag with distrobox-plus suffix
-    """
-    # Sanitize name to be a valid image tag
+    """Get the name for a boosted image."""
     safe_name = name.lower().replace("/", "-").replace(":", "-")
     return f"{safe_name}:distrobox-plus"
 
@@ -41,24 +56,9 @@ def get_boost_image_tag(
     init_hooks: str = "",
     pre_init_hooks: str = "",
 ) -> str:
-    """Generate a unique image tag based on inputs.
-
-    Creates a hash-based tag to enable caching of different configurations.
-
-    Args:
-        base_image: Base image name
-        additional_packages: Space-separated additional packages
-        init_hooks: Init hooks command
-        pre_init_hooks: Pre-init hooks command
-
-    Returns:
-        Unique image tag
-    """
-    # Create a hash of the configuration
+    """Generate a unique image tag based on inputs."""
     content = f"{base_image}|{additional_packages}|{init_hooks}|{pre_init_hooks}"
     config_hash = hashlib.sha256(content.encode()).hexdigest()[:12]
-
-    # Sanitize base image name
     safe_name = base_image.lower().replace("/", "-").replace(":", "-")
     return f"{safe_name}-boost:{config_hash}"
 
@@ -71,83 +71,50 @@ def generate_containerfile(
 ) -> str:
     """Generate multi-stage Containerfile content for a boosted image.
 
-    Creates a multi-stage build with conditional stages:
-    - Stage 1: init - Always present, installs base dependencies
-    - Stage 2: pre-hooks - Only if pre_init_hooks provided
-    - Stage 3: packages - Only if additional_packages provided
-    - Stage 4: runner - Only if init_hooks provided
-
-    Each stage inherits from the previous existing stage, enabling
-    efficient layer caching by Docker/Podman.
-
-    Args:
-        base_image: Base image to build from
-        additional_packages: Space-separated additional packages to install
-        init_hooks: Commands to run at end of init
-        pre_init_hooks: Commands to run at start of init
-
-    Returns:
-        Containerfile content as string
+    Creates a multi-stage build with conditional stages that chain together.
     """
-    lines: list[str] = []
-    current_stage = "init"
+    # Build stages list dynamically - each stage depends on the previous
+    stages: list[dict[str, str]] = []
+    prev_stage = "init"
 
-    # Stage 1: init (always present)
-    lines.extend(
-        [
-            f"FROM {base_image} AS init",
-            "",
-            "# Marker for boosted image - distrobox-init will skip package setup",
-            "RUN touch /.distrobox-boost",
-            "",
-            "# Upgrade existing packages",
-            f"RUN {generate_upgrade_cmd()}",
-            "",
-            "# Install distrobox dependencies (conditional per-package check)",
-            f"RUN {generate_install_cmd()}",
-            "",
-        ]
-    )
-
-    # Stage 2: pre-hooks (conditional)
     if pre_init_hooks:
-        lines.extend(
-            [
-                f"FROM {current_stage} AS pre-hooks",
-                "",
-                "# Pre-init hooks",
-                f"RUN {generate_hooks_cmd(pre_init_hooks)}",
-                "",
-            ]
+        stages.append(
+            {
+                "from": prev_stage,
+                "name": "pre-hooks",
+                "comment": "Pre-init hooks",
+                "run": generate_hooks_cmd(pre_init_hooks),
+            }
         )
-        current_stage = "pre-hooks"
+        prev_stage = "pre-hooks"
 
-    # Stage 3: packages (conditional)
     if additional_packages:
-        lines.extend(
-            [
-                f"FROM {current_stage} AS packages",
-                "",
-                "# Install additional packages",
-                f"RUN {generate_additional_packages_cmd(additional_packages)}",
-                "",
-            ]
+        stages.append(
+            {
+                "from": prev_stage,
+                "name": "packages",
+                "comment": "Install additional packages",
+                "run": generate_additional_packages_cmd(additional_packages),
+            }
         )
-        current_stage = "packages"
+        prev_stage = "packages"
 
-    # Stage 4: runner (conditional)
     if init_hooks:
-        lines.extend(
-            [
-                f"FROM {current_stage} AS runner",
-                "",
-                "# Init hooks",
-                f"RUN {generate_hooks_cmd(init_hooks)}",
-                "",
-            ]
+        stages.append(
+            {
+                "from": prev_stage,
+                "name": "runner",
+                "comment": "Init hooks",
+                "run": generate_hooks_cmd(init_hooks),
+            }
         )
 
-    return "\n".join(lines)
+    return _CONTAINERFILE_TEMPLATE.render(
+        base_image=base_image,
+        upgrade_cmd=generate_upgrade_cmd(),
+        install_cmd=generate_install_cmd(),
+        stages=stages,
+    )
 
 
 def build_image(
